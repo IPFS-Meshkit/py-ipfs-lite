@@ -387,6 +387,9 @@ class Peer:
 
             await self._exchange.start()
 
+            if self.routing and hasattr(self.routing, "start"):
+                self._nursery.start_soon(self.routing.start)
+
             self._state = PeerState.RUNNING
             self._started_event.set()
         except Exception:

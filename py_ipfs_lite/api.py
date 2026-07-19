@@ -568,3 +568,36 @@ async def name_resolve(
         if isinstance(e, IPFSLiteError):
             raise
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v0/debug/peerstore")
+@app.get("/api/v0/debug/peerstore")
+async def debug_peerstore(request: Request) -> Any:
+    """Return peer store information for debugging."""
+    peer: Peer = request.app.state.peer
+    try:
+        # Access the raw PeerStore from the inner BasicHost
+        peerstore = peer.host._host.get_peerstore()
+        peers = [p.to_base58() for p in peerstore.peer_ids()]
+        return JSONResponse(content={"count": len(peers), "peers": peers})
+    except Exception as e:
+        logger.error(f"Error getting peerstore: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v0/debug/routing_table")
+@app.get("/api/v0/debug/routing_table")
+async def debug_routing_table(request: Request) -> Any:
+    """Return routing table information for debugging."""
+    peer: Peer = request.app.state.peer
+    try:
+        # Access the raw RoutingTable from the inner KadDHT
+        if not peer.routing or not hasattr(peer.routing, "_routing"):
+            return JSONResponse(content={"count": 0, "peers": [], "message": "DHT not initialized"})
+            
+        routing_table = peer.routing._routing.routing_table
+        peers = [p.to_base58() for p in routing_table.get_peer_ids()]
+        return JSONResponse(content={"count": len(peers), "peers": peers})
+    except Exception as e:
+        logger.error(f"Error getting routing table: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
