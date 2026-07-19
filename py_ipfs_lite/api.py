@@ -464,6 +464,7 @@ async def swarm_peers(request: Request) -> Any:
                             "Direction": 0,
                         }
                     )
+            logger.info(f"api.py: conns_dict keys: {len(conns_dict)}, peers_data items: {len(peers_data)}, get_total: {network.get_total_connections()}")
     except Exception as e:
         if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
             raise HTTPException(status_code=400, detail=str(e))
@@ -473,6 +474,29 @@ async def swarm_peers(request: Request) -> Any:
 
     return JSONResponse(content={"Peers": peers_data})
 
+
+@app.get("/debug/conns")
+async def debug_conns(request: Request) -> Any:
+    peer: Peer = request.app.state.peer
+    network = peer.host.get_network()
+    
+    debug_info = {
+        "network_type": str(type(network)),
+        "has_connections": hasattr(network, "connections"),
+        "total_method": hasattr(network, "get_total_connections"),
+    }
+    
+    if hasattr(network, "get_total_connections"):
+        debug_info["total_connections"] = network.get_total_connections()
+        
+    if hasattr(network, "connections"):
+        debug_info["connections_type"] = str(type(network.connections))
+        if isinstance(network.connections, dict):
+            debug_info["connections_len"] = len(network.connections)
+            debug_info["keys_types"] = [str(type(k)) for k in list(network.connections.keys())[:5]]
+            debug_info["keys_strs"] = [str(k) for k in list(network.connections.keys())[:5]]
+            
+    return JSONResponse(content=debug_info)
 
 @app.get("/debug/metrics/prometheus")
 async def metrics(request: Request) -> Any:

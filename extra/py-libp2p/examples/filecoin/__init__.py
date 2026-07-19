@@ -1,1 +1,0 @@
-# Filecoin example package.
