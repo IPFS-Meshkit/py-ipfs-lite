@@ -446,25 +446,10 @@ class Peer:
                 if total < low:
                     logger.info(
                         f"[ConnectionKeeper] Below low watermark ({total} < {low}), "
-                        "re-dialing bootstrap peers and triggering DHT walk"
+                        "triggering DHT walk"
                     )
 
-                    # Step 1: Re-dial a handful of bootstrap peers.
-                    # They are always reachable and hand us fresh peer addresses.
-                    bootstrap_addrs = default_bootstrap_peers()[:6]
-                    for addr_str in bootstrap_addrs:
-                        try:
-                            from libp2p.peer.peerinfo import info_from_p2p_addr
-
-                            info = info_from_p2p_addr(Multiaddr(addr_str))
-                            with trio.move_on_after(5):
-                                await self.host.connect(info)
-                        except Exception as dial_err:
-                            logger.debug(
-                                f"[ConnectionKeeper] Bootstrap dial failed: {dial_err}"
-                            )
-
-                    # Step 2: Trigger a DHT random walk so we discover peers
+                    # Step 1: Trigger a DHT random walk so we discover peers
                     # not in the peerstore yet.
                     if self.routing:
                         raw_routing = getattr(self.routing, "_routing", None) or getattr(
@@ -487,25 +472,56 @@ class Peer:
                                 logger.debug(
                                     f"[ConnectionKeeper] DHT refresh trigger error: {dht_err}"
                                 )
-                    elif total < self.config.conn_mgr_high_water:
-                        import random
-                        from libp2p.peer.peerinfo import PeerInfo
-                        
-                        high = self.config.conn_mgr_high_water
-                        connected_ids = {c.muxed_conn.peer_id for c in raw_swarm.get_connections()}
-                        candidates = [
-                            p for p in self.host.get_peerstore().peers_with_addrs()
-                            if p not in connected_ids and p != self.host.get_id()
-                        ]
-                        random.shuffle(candidates)
-                        target = min(high - total, 20)  # dial in modest batches, not all at once
-                        for peer_id in candidates[:target]:
+
+                # Step 2: Aggressively and concurrently dial peers if below high watermark
+                if total < self.config.conn_mgr_high_water:
+                    import random
+                    from libp2p.peer.peerinfo import PeerInfo, info_from_p2p_addr
+
+                    high = self.config.conn_mgr_high_water
+                    connected_ids = {c.muxed_conn.peer_id for c in raw_swarm.get_connections()}
+                    dials_to_make = []
+
+                    # Include bootstrap peers if we are below low water
+                    if total < low:
+                        for addr_str in default_bootstrap_peers()[:6]:
+                            try:
+                                info = info_from_p2p_addr(Multiaddr(addr_str))
+                                if info.peer_id not in connected_ids:
+                                    dials_to_make.append(info)
+                            except Exception as e:
+                                logger.debug(f"[ConnectionKeeper] Bootstrap parse error: {e}")
+
+                    # Include opportunistic peers from peerstore
+                    candidates = [
+                        p for p in self.host.get_peerstore().peers_with_addrs()
+                        if p not in connected_ids and p != self.host.get_id()
+                    ]
+                    random.shuffle(candidates)
+                    target = min(high - total, 30)  # dial in batches up to 30
+
+                    for peer_id in candidates:
+                        if len(dials_to_make) >= target:
+                            break
+                        if not any(d.peer_id == peer_id for d in dials_to_make):
                             try:
                                 addrs = self.host.get_peerstore().addrs(peer_id)
+                                dials_to_make.append(PeerInfo(peer_id, addrs))
+                            except Exception as e:
+                                logger.debug(f"[ConnectionKeeper] Candidate parse error: {e}")
+
+                    if dials_to_make:
+                        async def _dial_peer(info: PeerInfo) -> None:
+                            try:
                                 with trio.move_on_after(5):
-                                    await self.host.connect(PeerInfo(peer_id, addrs))
+                                    await self.host.connect(info)
                             except Exception as dial_err:
-                                logger.debug(f"[ConnectionKeeper] Opportunistic dial failed: {dial_err}")
+                                logger.debug(f"[ConnectionKeeper] Dial failed for {info.peer_id}: {dial_err}")
+
+                        # Dial concurrently
+                        async with trio.open_nursery() as dial_nursery:
+                            for info in dials_to_make:
+                                dial_nursery.start_soon(_dial_peer, info)
 
             except Exception as e:
                 logger.debug(f"[ConnectionKeeper] Unexpected error: {e}")
