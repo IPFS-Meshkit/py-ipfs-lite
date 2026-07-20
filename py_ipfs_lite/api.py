@@ -210,7 +210,18 @@ async def dag_put(
 ) -> Any:
     """Store a generic DAG node."""
     peer: Peer = request.app.state.peer
-    body = await request.body()
+    
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_field = form.get("file")
+        if hasattr(file_field, "read"):
+            body = await file_field.read()
+        else:
+            body = str(file_field).encode("utf-8")
+    else:
+        body = await request.body()
+        
     try:
         node_data = json.loads(body)
         cid_str = await peer.add_node(node_data, codec=store_codec)
