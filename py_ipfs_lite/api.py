@@ -472,7 +472,7 @@ async def swarm_peers(request: Request) -> Any:
             raise
         raise HTTPException(status_code=500, detail=str(e))
 
-    return JSONResponse(content={"Peers": peers_data})
+    return JSONResponse(content={"Peers": peers_data, "NumPeers": len(peers_data)})
 
 
 @app.get("/debug/conns")
