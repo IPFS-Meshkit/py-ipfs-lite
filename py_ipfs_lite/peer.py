@@ -277,7 +277,6 @@ class Peer:
             host=raw_host,
             mode=DHTMode.SERVER,
             enable_random_walk=True,
-            random_walk_peer_target=self.config.conn_mgr_low_water,
         )  # type: ignore[arg-type]
         dht_adapter = RoutingAdapter(raw_routing)
 
