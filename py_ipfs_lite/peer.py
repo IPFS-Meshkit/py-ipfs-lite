@@ -487,6 +487,25 @@ class Peer:
                                 logger.debug(
                                     f"[ConnectionKeeper] DHT refresh trigger error: {dht_err}"
                                 )
+                    elif total < self.config.conn_mgr_high_water:
+                        import random
+                        from libp2p.peer.peerinfo import PeerInfo
+                        
+                        high = self.config.conn_mgr_high_water
+                        connected_ids = {c.muxed_conn.peer_id for c in raw_swarm.get_connections()}
+                        candidates = [
+                            p for p in self.host.get_peerstore().peers_with_addrs()
+                            if p not in connected_ids and p != self.host.get_id()
+                        ]
+                        random.shuffle(candidates)
+                        target = min(high - total, 20)  # dial in modest batches, not all at once
+                        for peer_id in candidates[:target]:
+                            try:
+                                addrs = self.host.get_peerstore().addrs(peer_id)
+                                with trio.move_on_after(5):
+                                    await self.host.connect(PeerInfo(peer_id, addrs))
+                            except Exception as dial_err:
+                                logger.debug(f"[ConnectionKeeper] Opportunistic dial failed: {dial_err}")
 
             except Exception as e:
                 logger.debug(f"[ConnectionKeeper] Unexpected error: {e}")
