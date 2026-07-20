@@ -36,7 +36,7 @@ class Config:
             raise ValueError("Connection watermarks cannot be negative.")
         if self.conn_mgr_low_water > self.conn_mgr_high_water:
             raise ValueError(
-                "conn_mgr_low_water cannot be greater than " "conn_mgr_high_water."
+                "conn_mgr_low_water cannot be greater than conn_mgr_high_water."
             )
 
         try:

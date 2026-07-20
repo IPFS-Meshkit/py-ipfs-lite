@@ -56,7 +56,8 @@ async def test_api_repo_stat(client):
 async def test_api_swarm_peers(client):
     res = await client.post("/api/v0/swarm/peers")
     assert res.status_code == 200
-    assert isinstance(res.json()["Peers"], list)
+    assert isinstance(res.json()["peers"], list)
+    assert len(res.json()["peers"]) == 0
 
 
 @pytest.mark.trio

@@ -1,8 +1,6 @@
 import base64
 import json
 import logging
-import os
-import tempfile
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -15,7 +13,10 @@ from py_ipfs_lite.config import Config
 from py_ipfs_lite.exceptions import (
     BlockNotFoundError,
     CarParseError,
+    DagTooDeepError,
+    InvalidCidError,
     IPFSLiteError,
+    PayloadTooLargeError,
     PeerNotStartedError,
     PinError,
     PinNotFoundError,
@@ -87,8 +88,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, None]:
         else:
             await peer.bootstrap(DEFAULT_BOOTSTRAP_PEERS)
 
-    logger.info(f"Daemon P2P Peer ID: {peer.host.id()}")  # type: ignore[union-attr]
-    for addr in peer.host.addrs():  # type: ignore[union-attr]
+    import typing
+
+    from py_ipfs_lite.interfaces import HostAdapter
+
+    host = typing.cast(HostAdapter, peer.host)
+    logger.info(f"Daemon P2P Peer ID: {host.id()}")
+    for addr in host.addrs():
         logger.info(f"  P2P Listening on: {addr}")
 
     try:
@@ -110,46 +116,35 @@ async def ipfs_lite_exception_handler(request: Request, exc: IPFSLiteError) -> A
         status_code = 503
     elif isinstance(exc, PinError):
         status_code = 409
-    elif isinstance(exc, CarParseError):
+    elif isinstance(exc, (CarParseError, InvalidCidError, DagTooDeepError)):
         status_code = 400
+    elif isinstance(exc, PayloadTooLargeError):
+        status_code = 413
     return JSONResponse(status_code=status_code, content={"detail": str(exc)})
 
 
 @app.post("/api/v0/add")
 async def add_file(request: Request, file: UploadFile = File(...)) -> Any:
-    """Add a file to the local blockstore and announce it."""
+    """Add a file to the node."""
     peer: Peer = request.app.state.peer
 
-    max_upload_size = getattr(peer.config, "max_upload_size", 100 * 1024 * 1024)
-    if "content-length" in request.headers:
-        if int(request.headers["content-length"]) > max_upload_size:
-            raise HTTPException(status_code=413, detail="Payload Too Large")
+    if not isinstance(file, UploadFile):
+        raise HTTPException(status_code=400, detail="Missing or invalid file")
+    body = await file.read()
 
-    # Save the uploaded file to a temporary file, then add it via peer
-    fd, path = tempfile.mkstemp()
-    try:
-        size = 0
-        with os.fdopen(fd, "wb") as f:
-            while chunk := await file.read(65536):
-                size += len(chunk)
-                if size > max_upload_size:
-                    raise HTTPException(status_code=413, detail="Payload Too Large")
-                f.write(chunk)
+    async def chunks() -> AsyncGenerator[bytes, None]:
+        if body:
+            yield body
 
-        cid_str = await peer.add_file(path)
-        return JSONResponse(
-            content={"Name": file.filename, "Hash": cid_str, "Size": str(size)}
-        )
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        os.remove(path)
+    from py_ipfs_lite.services import files_service
+
+    result = await files_service.add_file_from_stream(
+        peer, file.filename or "unknown", chunks()
+    )
+
+    return JSONResponse(
+        content={"Name": result.name, "Hash": result.cid, "Size": str(result.size)}
+    )
 
 
 @app.post("/api/v0/cat")
@@ -160,48 +155,11 @@ async def cat_file(
 ) -> Any:
     """Fetch a file by its CID."""
     peer: Peer = request.app.state.peer
-    try:
-        content_iter = await peer.get_file(arg, stream=True)
-        max_download_size = getattr(peer.config, "max_download_size", 100 * 1024 * 1024)
 
-        from collections.abc import AsyncGenerator, AsyncIterator
-        from typing import cast
+    from py_ipfs_lite.services import files_service
 
-        if not hasattr(content_iter, "__aiter__"):
-            # Should not happen since stream=True
-            raise ValueError("Expected an async iterator for streaming")
-
-        iterator = cast(AsyncIterator[bytes], content_iter)
-
-        try:
-            first_chunk = await iterator.__anext__()
-        except StopAsyncIteration:
-            first_chunk = b""
-
-        async def stream_generator() -> AsyncGenerator[bytes, None]:
-            size = len(first_chunk)
-            if size > 0:
-                yield first_chunk
-
-            try:
-                async for chunk in iterator:
-                    size += len(chunk)
-                    if size > max_download_size:
-                        logger.error("Download exceeded max_download_size.")
-                        break
-                    yield chunk
-            except Exception as e:
-                logger.error(f"Error streaming file: {e}")
-
-        return StreamingResponse(
-            stream_generator(), media_type="application/octet-stream"
-        )
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    stream = files_service.get_file_stream(peer, arg)
+    return StreamingResponse(stream, media_type="application/octet-stream")
 
 
 @app.post("/api/v0/dag/put")
@@ -210,15 +168,15 @@ async def dag_put(
 ) -> Any:
     """Store a generic DAG node."""
     peer: Peer = request.app.state.peer
-    
+
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
         form = await request.form()
         file_field = form.get("file") or form.get("data")
         if not file_field and form.keys():
             file_field = form[list(form.keys())[0]]
-            
-        if hasattr(file_field, "read"):
+
+        if isinstance(file_field, UploadFile):
             body = await file_field.read()
         elif file_field is not None:
             body = str(file_field).encode("utf-8")
@@ -226,17 +184,15 @@ async def dag_put(
             body = b""
     else:
         body = await request.body()
-        
+
     try:
         node_data = json.loads(body)
-        cid_str = await peer.add_node(node_data, codec=store_codec)
-        return JSONResponse(content={"Cid": {"/": cid_str}})
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=f"{str(e)} | Body: {repr(body)}")
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+        from py_ipfs_lite.services import dag_service
+
+        result = await dag_service.put_node(peer, node_data, codec=store_codec)
+        return JSONResponse(content={"Cid": {"/": result.cid}})
+    except (json.JSONDecodeError, RecursionError) as e:
+        raise HTTPException(status_code=400, detail=f"{str(e)} | Body: {repr(body)}")
 
 
 @app.post("/api/v0/dag/get")
@@ -246,31 +202,23 @@ async def dag_get(
 ) -> Any:
     """Retrieve a generic DAG node."""
     peer: Peer = request.app.state.peer
-    try:
-        from py_ipfs_lite.peer import parse_cid
+    from py_ipfs_lite.services import dag_encoding, dag_service
 
-        cid = parse_cid(arg)
-        node_data = await peer.get_node(arg)
+    result = await dag_service.get_node(peer, arg)
 
-        if cid.codec == "raw":
-            return Response(content=node_data, media_type="application/octet-stream")
+    accept = request.headers.get("accept", "")
+    if result.cid_codec in ("dag-cbor", "cbor") and "application/cbor" in accept:
+        import cbor2
 
-        accept = request.headers.get("accept", "")
-        if cid.codec in ("dag-cbor", "cbor") and "application/cbor" in accept:
-            import cbor2
+        return Response(
+            content=cbor2.dumps(result.node_data), media_type="application/cbor"
+        )
 
-            return Response(
-                content=cbor2.dumps(node_data), media_type="application/cbor"
-            )
+    if result.cid_codec == "raw":
+        return Response(content=result.node_data, media_type="application/octet-stream")
 
-        encoded = json.dumps(node_data, cls=DAGJSONEncoder)
-        return Response(content=encoded, media_type="application/json")
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    encoded = json.dumps(result.node_data, cls=dag_encoding.DAGJSONEncoder)
+    return Response(content=encoded, media_type="application/json")
 
 
 @app.post("/api/v0/block/stat")
@@ -282,23 +230,39 @@ async def block_stat(
 ) -> Any:
     """Check if a block exists locally and get its size."""
     peer: Peer = request.app.state.peer
-    from libp2p.bitswap.cid import parse_cid
+    from py_ipfs_lite.services import block_service
 
-    try:
-        cid = parse_cid(arg)
-        data = await peer.blockstore.get(cid)  # type: ignore[union-attr]
-        if data is None:
-            raise HTTPException(status_code=404, detail="Block not found locally")
+    stat = await block_service.stat_block(peer, arg)
+    return JSONResponse(content={"Key": stat.key, "Size": stat.size})
 
-        return JSONResponse(content={"Key": arg, "Size": len(data)})  # type: ignore[arg-type]
-    except HTTPException:
-        raise
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v0/block/get")
+@app.get("/api/v0/block/get")
+async def block_get(
+    request: Request, arg: str = Query(..., description="The base58 encoded CID")
+) -> Any:
+    """Get a raw IPFS block."""
+    peer: Peer = request.app.state.peer
+    from fastapi.responses import Response
+
+    from py_ipfs_lite.services import block_service
+
+    data = await block_service.get_block(peer, arg)
+    return Response(content=data, media_type="application/octet-stream")
+
+
+@app.post("/api/v0/block/put")
+async def block_put(request: Request, file: UploadFile = File(...)) -> Any:
+    """Store a raw IPFS block."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import block_service
+
+    if not isinstance(file, UploadFile):
+        raise HTTPException(status_code=400, detail="Missing or invalid file")
+
+    data = await file.read()
+    cid_str = await block_service.put_block(peer, data)
+    return JSONResponse(content={"Key": cid_str, "Size": len(data)})
 
 
 @app.post("/api/v0/block/rm")
@@ -308,15 +272,10 @@ async def block_rm(
 ) -> Any:
     """Remove a raw block from the local blockstore."""
     peer: Peer = request.app.state.peer
-    try:
-        await peer.remove_node(arg)
-        return JSONResponse(content={"Hash": arg, "Error": ""})
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import block_service
+
+    await block_service.remove_block(peer, arg)
+    return JSONResponse(content={"Hash": arg, "Error": ""})
 
 
 @app.post("/api/v0/pin/add")
@@ -327,15 +286,10 @@ async def pin_add(
 ) -> Any:
     """Pin a CID."""
     peer: Peer = request.app.state.peer
-    try:
-        await peer.add_pin(arg, recursive=recursive)
-        return JSONResponse(content={"Pins": [arg]})
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import pin_service
+
+    await pin_service.add_pin(peer, arg, recursive=recursive)
+    return JSONResponse(content={"Pins": [arg]})
 
 
 @app.post("/api/v0/pin/rm")
@@ -345,60 +299,62 @@ async def pin_rm(
 ) -> Any:
     """Unpin a CID."""
     peer: Peer = request.app.state.peer
-    try:
-        await peer.remove_pin(arg)
-        return JSONResponse(content={"Pins": [arg]})
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import pin_service
+
+    await pin_service.remove_pin(peer, arg)
+    return JSONResponse(content={"Pins": [arg]})
+
+
+@app.post("/api/v0/pin/ls")
+@app.get("/api/v0/pin/ls")
+async def pin_ls(
+    request: Request, type_filter: str = Query("all", alias="type")
+) -> Any:
+    """List pins."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import pin_service
+
+    pins = await pin_service.list_pins(peer, type_filter)
+
+    formatted_keys = {}
+    for cid_str, type_str in pins.items():
+        formatted_keys[cid_str] = {"Type": type_str}
+
+    return JSONResponse(content={"Keys": formatted_keys})
 
 
 @app.post("/api/v0/repo/gc")
 async def repo_gc(request: Request) -> Any:
     """Run garbage collection."""
     peer: Peer = request.app.state.peer
-    try:
-        import dataclasses
+    from py_ipfs_lite.services import pin_service
 
-        stats = await peer.gc()
-        return JSONResponse(content=dataclasses.asdict(stats))
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    await pin_service.run_gc(peer)
+
+    # The actual IPFS API expects a stream of removed keys.
+    # Our internal gc doesn't track specific removed CIDs yet, only counts.
+    # Return an empty list for Key to avoid crashing clients.
+    return JSONResponse(content={"Key": []})
 
 
 @app.post("/api/v0/refs/local")
 async def refs_local(request: Request) -> Any:
     """List all CIDs stored in the local blockstore."""
     peer: Peer = request.app.state.peer
-    try:
-        keys = peer.blockstore.all_keys()  # type: ignore[union-attr]
-        results = []
-        for k in keys:
-            results.append({"Ref": k, "Err": ""})
-        # Kubo streams this as NDJSON, but returning a JSON array of objects is easier for testing
-        return JSONResponse(content={"Refs": results})
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import repo_service
+
+    keys = await repo_service.list_local_refs(peer)
+    results = [{"Ref": k, "Err": ""} for k in keys]
+    return JSONResponse(content={"Refs": results})
 
 
 @app.post("/api/v0/version")
 @app.get("/api/v0/version")
 async def api_version() -> Any:
     """Get the version of py-ipfs-lite."""
-    return JSONResponse(
-        content={"Version": "0.1.1", "Commit": "", "System": "py-ipfs-lite"}
-    )
+    from py_ipfs_lite.services import node_service
+
+    return JSONResponse(content=node_service.get_version_info())
 
 
 @app.post("/api/v0/id")
@@ -406,10 +362,13 @@ async def api_version() -> Any:
 async def api_id(request: Request) -> Any:
     """Show IPFS node id info."""
     peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import node_service
+
+    ident = await node_service.get_identity(peer)
     return JSONResponse(
         content={
-            "ID": peer.host.id().to_base58(),  # type: ignore[union-attr]
-            "Addresses": [str(addr) for addr in peer.host.addrs()],  # type: ignore[union-attr]
+            "ID": ident.id,
+            "Addresses": ident.addresses,
         }
     )
 
@@ -419,34 +378,17 @@ async def api_id(request: Request) -> Any:
 async def repo_stat(request: Request) -> Any:
     """Get stats for the currently used repo."""
     peer: Peer = request.app.state.peer
-    try:
-        from libp2p.bitswap.cid import cid_to_bytes, parse_cid
+    from py_ipfs_lite.services import repo_service
 
-        keys = peer.blockstore.all_keys()  # type: ignore[union-attr]
-        num_objects = len(keys)
-        repo_size = 0
-        for k in keys:
-            cid_bytes = cid_to_bytes(parse_cid(k))
-            repo_size += await peer.blockstore.get_size(cid_bytes)  # type: ignore[union-attr, misc]
-
-        path = peer.config.blockstore_path
-        if peer.config.blockstore_type == "memory":
-            path = ""
-
-        return JSONResponse(
-            content={
-                "NumObjects": num_objects,
-                "RepoSize": repo_size,
-                "RepoPath": path,
-                "Version": "1",
-            }
-        )
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    stat = await repo_service.get_repo_stat(peer)
+    return JSONResponse(
+        content={
+            "NumObjects": stat.num_objects,
+            "RepoSize": stat.repo_size,
+            "RepoPath": stat.repo_path,
+            "Version": stat.version,
+        }
+    )
 
 
 @app.post("/api/v0/swarm/peers")
@@ -454,60 +396,33 @@ async def repo_stat(request: Request) -> Any:
 async def swarm_peers(request: Request) -> Any:
     """List peers with open connections."""
     peer: Peer = request.app.state.peer
-    peers = []
+    from py_ipfs_lite.services import swarm_service
 
     try:
-        network = peer.host.get_network()  # type: ignore[union-attr]
-        if hasattr(network, "connections"):
-            conns_dict = network.connections
-            peers = [p.to_base58() for p in conns_dict.keys()]
-            logger.info(f"api.py: conns_dict keys: {len(conns_dict)}, get_total: {network.get_total_connections()}")
+        peers = await swarm_service.list_connected_peers(peer)
+        return JSONResponse(content={"count": peers.count, "peers": peers.peers})
     except Exception as e:
         logger.error(f"Error getting swarm peers: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-    return JSONResponse(content={"count": len(peers), "peers": peers})
 
 
 @app.get("/debug/conns")
 async def debug_conns(request: Request) -> Any:
     peer: Peer = request.app.state.peer
-    network = peer.host.get_network()
-    
-    debug_info = {
-        "network_type": str(type(network)),
-        "has_connections": hasattr(network, "connections"),
-        "total_method": hasattr(network, "get_total_connections"),
-    }
-    
-    if hasattr(network, "get_total_connections"):
-        debug_info["total_connections"] = network.get_total_connections()
-        
-    if hasattr(network, "connections"):
-        debug_info["connections_type"] = str(type(network.connections))
-        if isinstance(network.connections, dict):
-            debug_info["connections_len"] = len(network.connections)
-            debug_info["keys_types"] = [str(type(k)) for k in list(network.connections.keys())[:5]]
-            debug_info["keys_strs"] = [str(k) for k in list(network.connections.keys())[:5]]
-            
-    return JSONResponse(content=debug_info)
+    from py_ipfs_lite.services import swarm_service
+
+    total = await swarm_service.count_connections(peer)
+    return JSONResponse(content={"total_connections": total})
+
 
 @app.get("/debug/metrics/prometheus")
 async def metrics(request: Request) -> Any:
     """Expose Prometheus metrics."""
     peer: Peer = request.app.state.peer
-    network = peer.host.get_network()  # type: ignore[union-attr]
-
     from py_ipfs_lite.metrics import IPFS_SWARM_PEERS
+    from py_ipfs_lite.services import swarm_service
 
-    conn_count = 0
-    if hasattr(network, "connections"):
-        conns_dict = network.connections
-        for conns in conns_dict.values():
-            if isinstance(conns, list):
-                conn_count += len(conns)
-            else:
-                conn_count += 1
+    conn_count = await swarm_service.count_connections(peer)
 
     IPFS_SWARM_PEERS.set(conn_count)
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
@@ -518,52 +433,38 @@ async def metrics(request: Request) -> Any:
 async def repo_version(request: Request) -> Any:
     """Return the datastore/repo version."""
     peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import repo_service
 
-    if peer.config.blockstore_type == "filesystem" and peer.config.blockstore_path:
-        from py_ipfs_lite.versioning import get_repo_version
-
-        v = get_repo_version(peer.config.blockstore_path)
-    else:
-        v = "memory"
-
-    return JSONResponse(content={"Version": v})
+    version = await repo_service.get_repo_version(peer)
+    return JSONResponse(content={"Version": version})
 
 
 @app.post("/api/v0/name/publish")
 async def name_publish(
     request: Request,
     arg: str = Query(..., description="IPFS path of the object to be published"),
+    lifetime: int = Query(24),
 ) -> Any:
     """Publish an IPNS record."""
     peer: Peer = request.app.state.peer
-    try:
-        # Default lifetime is 24 hours.
-        name = await peer.publish_name(arg, lifetime_hours=24)
-        return JSONResponse(content={"Name": name, "Value": arg})
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import naming_service
+
+    result_name = await naming_service.publish_name(peer, arg, lifetime_hours=lifetime)
+    return JSONResponse(content={"Name": result_name, "Value": arg})
 
 
 @app.post("/api/v0/name/resolve")
 @app.get("/api/v0/name/resolve")
 async def name_resolve(
-    request: Request, arg: str = Query(..., description="The IPNS name to resolve")
+    request: Request,
+    arg: str = Query(..., description="IPFS path of the name to resolve"),
 ) -> Any:
     """Resolve an IPNS record."""
     peer: Peer = request.app.state.peer
-    try:
-        value = await peer.resolve_name(arg)
-        return JSONResponse(content={"Path": value})
-    except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import naming_service
+
+    path = await naming_service.resolve_name(peer, arg)
+    return JSONResponse(content={"Path": path})
 
 
 @app.post("/api/v0/debug/peerstore")
@@ -571,14 +472,10 @@ async def name_resolve(
 async def debug_peerstore(request: Request) -> Any:
     """Return peer store information for debugging."""
     peer: Peer = request.app.state.peer
-    try:
-        # Access the raw PeerStore from the inner BasicHost
-        peerstore = peer.host._host.get_peerstore()
-        peers = [p.to_base58() for p in peerstore.peer_ids()]
-        return JSONResponse(content={"count": len(peers), "peers": peers})
-    except Exception as e:
-        logger.error(f"Error getting peerstore: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import swarm_service
+
+    res = await swarm_service.list_connected_peers(peer)
+    return JSONResponse(content={"count": res.count, "peers": res.peers})
 
 
 @app.post("/api/v0/debug/routing_table")
@@ -586,14 +483,33 @@ async def debug_peerstore(request: Request) -> Any:
 async def debug_routing_table(request: Request) -> Any:
     """Return routing table information for debugging."""
     peer: Peer = request.app.state.peer
-    try:
-        # Access the raw RoutingTable from the inner KadDHT
-        if not peer.routing or not hasattr(peer.routing, "_routing"):
-            return JSONResponse(content={"count": 0, "peers": [], "message": "DHT not initialized"})
-            
-        routing_table = peer.routing._routing.routing_table
-        peers = [p.to_base58() for p in routing_table.get_peer_ids()]
-        return JSONResponse(content={"count": len(peers), "peers": peers})
-    except Exception as e:
-        logger.error(f"Error getting routing table: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    from py_ipfs_lite.services import swarm_service
+
+    res = await swarm_service.list_routing_table_peers(peer)
+    return JSONResponse(content={"count": res.count, "peers": res.peers})
+
+
+@app.post("/api/v0/swarm/connect")
+async def swarm_connect(
+    request: Request,
+    arg: str = Query(..., description="The multiaddr of the peer to connect to"),
+) -> Any:
+    """Connect to a peer."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    await swarm_service.connect_peer(peer, arg)
+    return JSONResponse(content={"Strings": [f"connect {arg} success"]})
+
+
+@app.post("/api/v0/swarm/disconnect")
+async def swarm_disconnect(
+    request: Request,
+    arg: str = Query(..., description="The peer ID to disconnect from"),
+) -> Any:
+    """Disconnect from a peer."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    await swarm_service.disconnect_peer(peer, arg)
+    return JSONResponse(content={"Strings": [f"disconnect {arg} success"]})

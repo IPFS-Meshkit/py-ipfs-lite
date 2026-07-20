@@ -38,3 +38,21 @@ class CarParseError(IPFSLiteError):
     """Raised when a CAR file is malformed, truncated, or cannot be parsed."""
 
     pass
+
+
+class InvalidCidError(IPFSLiteError):
+    """Raised when a CID/path string cannot be parsed."""
+
+    pass
+
+
+class DagTooDeepError(IPFSLiteError):
+    """Raised when a DAG node's structure exceeds a safe recursion depth."""
+
+    pass
+
+
+class PayloadTooLargeError(IPFSLiteError):
+    """Raised when an upload or download exceeds the configured size limit."""
+
+    pass

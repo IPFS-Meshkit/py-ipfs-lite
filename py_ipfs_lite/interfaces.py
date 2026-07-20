@@ -165,6 +165,7 @@ class RoutingAdapter:
     async def start(self) -> None:
         try:
             from libp2p.tools.anyio_service.api import Service
+
             is_service = isinstance(self._routing, Service)
         except ImportError:
             is_service = False
@@ -172,6 +173,7 @@ class RoutingAdapter:
         if is_service:
             import trio
             from libp2p.tools.anyio_service.context import background_trio_service
+
             async with background_trio_service(self._routing):
                 await trio.sleep_forever()
         elif hasattr(self._routing, "run"):

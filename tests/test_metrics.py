@@ -16,6 +16,7 @@ def test_metrics_endpoint(client):
     mock_network = Mock()
     mock_network.connections = {}
     mock_peer.host.get_network.return_value = mock_network
+    mock_peer.host._host.get_network.return_value = mock_network
     app.state.peer = mock_peer
     response = client.get("/debug/metrics/prometheus")
     assert response.status_code == 200

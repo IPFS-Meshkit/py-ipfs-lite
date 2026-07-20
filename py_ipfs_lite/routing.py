@@ -208,6 +208,7 @@ class TieredRouting:
 
     async def start(self) -> None:
         import trio
+
         async with trio.open_nursery() as nursery:
             for r in self.routers:
                 if hasattr(r, "start"):

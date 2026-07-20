@@ -27,7 +27,7 @@ def create_ipns_record(
     """Create a signed IPNS record."""
     if not (0 <= sequence <= 0xFFFFFFFFFFFFFFFF):
         raise ValueError(
-            "Sequence number must be a 64-bit unsigned integer " "(0 to 2^64-1)"
+            "Sequence number must be a 64-bit unsigned integer (0 to 2^64-1)"
         )
     if not (1 <= lifetime_hours <= 876000):
         raise ValueError("lifetime_hours must be between 1 and 876000 (100 years)")

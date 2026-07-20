@@ -45,8 +45,6 @@ from libp2p.crypto.keys import KeyPair
 from libp2p.crypto.x25519 import create_new_key_pair as create_new_x25519_key_pair
 from libp2p.discovery.bootstrap.bootstrap import BootstrapDiscovery
 from libp2p.kad_dht.kad_dht import DHTMode, KadDHT
-from libp2p.network.auto_connector import AutoConnector
-from libp2p.network.connection_pruner import ConnectionPruner
 from libp2p.peer.peerinfo import info_from_p2p_addr
 from libp2p.security.noise.transport import Transport as NoiseTransport
 
@@ -267,14 +265,15 @@ class Peer:
         )
         return HostAdapter(raw_host)
 
-
     async def _create_routing(self) -> Any:
         if self.config.offline:
             return None
 
         raw_host = getattr(self.host, "_host", self.host)
+        import typing
+
         raw_routing = KadDHT(
-            host=raw_host,
+            host=typing.cast(typing.Any, raw_host),
             mode=DHTMode.SERVER,
             enable_random_walk=True,
         )  # type: ignore[arg-type]
@@ -398,8 +397,6 @@ class Peer:
         except Exception:
             await self.close()
             raise
-
-
 
     async def __aenter__(self) -> "Peer":
         if not self._started:
