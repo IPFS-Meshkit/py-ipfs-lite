@@ -438,41 +438,19 @@ async def repo_stat(request: Request) -> Any:
 async def swarm_peers(request: Request) -> Any:
     """List peers with open connections."""
     peer: Peer = request.app.state.peer
-    peers_data = []
+    peers = []
 
     try:
         network = peer.host.get_network()  # type: ignore[union-attr]
         if hasattr(network, "connections"):
             conns_dict = network.connections
-            for peer_id_obj, conns in conns_dict.items():
-                if not isinstance(conns, list):
-                    conns = [conns]
-                for conn in conns:
-                    addr_str = "unknown"
-                    try:
-                        if hasattr(conn, "remote_addr"):
-                            addr_str = str(conn.remote_addr)
-                        elif hasattr(conn, "get_remote_multiaddr"):
-                            addr_str = str(conn.get_remote_multiaddr())
-                    except Exception:
-                        pass
-                    
-                    peers_data.append(
-                        {
-                            "Peer": peer_id_obj.to_base58(),
-                            "Addr": addr_str,
-                            "Direction": 0,
-                        }
-                    )
-            logger.info(f"api.py: conns_dict keys: {len(conns_dict)}, peers_data items: {len(peers_data)}, get_total: {network.get_total_connections()}")
+            peers = [p.to_base58() for p in conns_dict.keys()]
+            logger.info(f"api.py: conns_dict keys: {len(conns_dict)}, get_total: {network.get_total_connections()}")
     except Exception as e:
-        if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
-        if isinstance(e, IPFSLiteError):
-            raise
+        logger.error(f"Error getting swarm peers: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    return JSONResponse(content={"Peers": peers_data, "NumPeers": len(peers_data)})
+    return JSONResponse(content={"count": len(peers), "peers": peers})
 
 
 @app.get("/debug/conns")
