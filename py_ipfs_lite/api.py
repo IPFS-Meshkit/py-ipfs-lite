@@ -214,11 +214,16 @@ async def dag_put(
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
         form = await request.form()
-        file_field = form.get("file")
+        file_field = form.get("file") or form.get("data")
+        if not file_field and form.keys():
+            file_field = form[list(form.keys())[0]]
+            
         if hasattr(file_field, "read"):
             body = await file_field.read()
-        else:
+        elif file_field is not None:
             body = str(file_field).encode("utf-8")
+        else:
+            body = b""
     else:
         body = await request.body()
         
@@ -228,7 +233,7 @@ async def dag_put(
         return JSONResponse(content={"Cid": {"/": cid_str}})
     except Exception as e:
         if isinstance(e, (ValueError, TypeError, json.JSONDecodeError, RecursionError)):
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=f"{str(e)} | Body: {repr(body)}")
         if isinstance(e, IPFSLiteError):
             raise
         raise HTTPException(status_code=500, detail=str(e))
