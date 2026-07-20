@@ -385,15 +385,8 @@ class Peer:
                     self.config.conn_mgr_high_water
                 )
 
-                self._auto_connector = AutoConnector(raw_swarm)  # type: ignore[assignment]
-                self._connection_pruner = ConnectionPruner(raw_swarm)  # type: ignore[assignment]
-
-                await self._auto_connector.start()  # type: ignore[attr-defined]
-                await self._connection_pruner.start()  # type: ignore[attr-defined]
-
-                await self._auto_connector.run_background_task(self._nursery)  # type: ignore[attr-defined]
-                self._nursery.start_soon(self._periodic_pruner_task)
-                self._nursery.start_soon(self._connection_keeper_task)
+                if hasattr(raw_swarm, "auto_connector"):
+                    raw_swarm.auto_connector.auto_connect_interval = 30.0
 
             await self._exchange.start()
 
@@ -406,129 +399,7 @@ class Peer:
             await self.close()
             raise
 
-    async def _periodic_pruner_task(self) -> None:
-        """Periodically trigger connection pruning."""
-        if hasattr(self, "_started_event"):
-            await self._started_event.wait()
 
-        while self._started:
-            if self._connection_pruner:
-                try:
-                    await self._connection_pruner.maybe_prune_connections()
-                except Exception as e:
-                    logger.debug(f"Error in connection pruner: {e}")
-            await trio.sleep(15.0)
-
-    async def _connection_keeper_task(self) -> None:
-        """
-        Proactively maintain connections in [low_water, high_water] range.
-
-        Runs every 30 seconds. If active connections drop below low_watermark (100),
-        re-dials bootstrap peers and triggers a DHT random walk to discover new peers.
-        This ensures the node actively builds up its peer set rather than passively
-        waiting for inbound connections.
-        """
-        if hasattr(self, "_started_event"):
-            await self._started_event.wait()
-
-        # Give the node 20 seconds to connect to initial bootstrap peers first
-        await trio.sleep(20.0)
-
-        while self._started:
-            try:
-                raw_swarm = getattr(self.host, "_host", self.host).get_network()
-                total = raw_swarm.get_total_connections()
-                low = self.config.conn_mgr_low_water
-
-                logger.info(
-                    f"[ConnectionKeeper] {total} active connections "
-                    f"(low_water={low}, high_water={self.config.conn_mgr_high_water})"
-                )
-
-                if total < low:
-                    logger.info(
-                        f"[ConnectionKeeper] Below low watermark ({total} < {low}), "
-                        "triggering DHT walk"
-                    )
-
-                    # Step 1: Trigger a DHT random walk so we discover peers
-                    # not in the peerstore yet.
-                    if self.routing:
-                        raw_routing = getattr(self.routing, "_routing", None) or getattr(
-                            self.routing, "_delegate", None
-                        ) or self.routing
-                        if hasattr(raw_routing, "refresh_routing_table"):
-                            try:
-                                async def _do_refresh() -> None:
-                                    try:
-                                        await raw_routing.refresh_routing_table()
-                                        logger.info("[ConnectionKeeper] DHT routing table refresh finished")
-                                    except Exception as dht_err:
-                                        logger.debug(f"[ConnectionKeeper] DHT refresh error: {dht_err}")
-                                
-                                self._nursery.start_soon(_do_refresh)
-                                logger.info(
-                                    "[ConnectionKeeper] DHT routing table refresh triggered in background"
-                                )
-                            except Exception as dht_err:
-                                logger.debug(
-                                    f"[ConnectionKeeper] DHT refresh trigger error: {dht_err}"
-                                )
-
-                # Step 2: Aggressively and concurrently dial peers if below high watermark
-                if total < self.config.conn_mgr_high_water:
-                    import random
-                    from libp2p.peer.peerinfo import PeerInfo, info_from_p2p_addr
-
-                    high = self.config.conn_mgr_high_water
-                    connected_ids = {c.muxed_conn.peer_id for c in raw_swarm.get_connections()}
-                    dials_to_make = []
-
-                    # Include bootstrap peers if we are below low water
-                    if total < low:
-                        for addr_str in default_bootstrap_peers()[:6]:
-                            try:
-                                info = info_from_p2p_addr(Multiaddr(addr_str))
-                                if info.peer_id not in connected_ids:
-                                    dials_to_make.append(info)
-                            except Exception as e:
-                                logger.debug(f"[ConnectionKeeper] Bootstrap parse error: {e}")
-
-                    # Include opportunistic peers from peerstore
-                    candidates = [
-                        p for p in self.host.get_peerstore().peers_with_addrs()
-                        if p not in connected_ids and p != self.host.get_id()
-                    ]
-                    random.shuffle(candidates)
-                    target = min(high - total, 30)  # dial in batches up to 30
-
-                    for peer_id in candidates:
-                        if len(dials_to_make) >= target:
-                            break
-                        if not any(d.peer_id == peer_id for d in dials_to_make):
-                            try:
-                                addrs = self.host.get_peerstore().addrs(peer_id)
-                                dials_to_make.append(PeerInfo(peer_id, addrs))
-                            except Exception as e:
-                                logger.debug(f"[ConnectionKeeper] Candidate parse error: {e}")
-
-                    if dials_to_make:
-                        async def _dial_peer(info: PeerInfo) -> None:
-                            try:
-                                with trio.move_on_after(5):
-                                    await self.host.connect(info)
-                            except Exception as dial_err:
-                                logger.debug(f"[ConnectionKeeper] Dial failed for {info.peer_id}: {dial_err}")
-
-                        # Dial concurrently
-                        async with trio.open_nursery() as dial_nursery:
-                            for info in dials_to_make:
-                                dial_nursery.start_soon(_dial_peer, info)
-
-            except Exception as e:
-                logger.debug(f"[ConnectionKeeper] Unexpected error: {e}")
-
-            await trio.sleep(30.0)
 
     async def __aenter__(self) -> "Peer":
         if not self._started:
@@ -553,10 +424,6 @@ class Peer:
                 await self.reprovider.stop()
                 if self._exchange:
                     await self._exchange.stop()  # type: ignore[union-attr]
-                if self._auto_connector:
-                    await self._auto_connector.stop()
-                if self._connection_pruner:
-                    await self._connection_pruner.stop()
 
                 if self.routing and hasattr(self.routing, "close"):
                     await self.routing.close()
