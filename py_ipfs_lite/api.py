@@ -474,7 +474,7 @@ async def debug_peerstore(request: Request) -> Any:
     peer: Peer = request.app.state.peer
     from py_ipfs_lite.services import swarm_service
 
-    res = await swarm_service.list_connected_peers(peer)
+    res = await swarm_service.list_peerstore_peers(peer)
     return JSONResponse(content={"count": res.count, "peers": res.peers})
 
 
