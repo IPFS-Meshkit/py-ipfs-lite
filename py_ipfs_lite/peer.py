@@ -256,12 +256,36 @@ class Peer:
         # Use a 600-second idle timeout to match go-libp2p defaults.
         # 30s (the old default) caused connections to die while idle between DHT queries.
         quic_cfg = QUICTransportConfig(idle_timeout=600.0) if has_quic else None
+        import os
+
+        from py_ipfs_lite.config import BlockStoreType
+
+        peerstore_opt = None
+        if (
+            self.config.blockstore_type == BlockStoreType.FILESYSTEM
+            and self.config.blockstore_path
+        ):
+            from libp2p.peer.persistent.datastore.sqlite_sync import (
+                SQLiteDatastoreSync,
+            )
+            from libp2p.peer.persistent.sync.peerstore import (
+                SyncPersistentPeerStore,
+            )
+
+            base_dir = os.path.dirname(self.config.blockstore_path)
+            os.makedirs(base_dir, exist_ok=True)
+            db_path = os.path.join(base_dir, "peerstore.db")
+
+            datastore = SQLiteDatastoreSync(path=db_path)
+            peerstore_opt = SyncPersistentPeerStore(datastore=datastore)
+
         raw_host = new_host(
             key_pair=self._host_key,
             listen_addrs=maddrs,
             sec_opt=sec_opt,  # type: ignore[arg-type]
             enable_quic=has_quic,
             connection_config=quic_cfg,
+            peerstore_opt=peerstore_opt,
         )
         return HostAdapter(raw_host)
 
