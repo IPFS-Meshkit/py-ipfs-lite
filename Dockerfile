@@ -25,6 +25,9 @@ COPY . .
 # Install the application
 RUN uv pip install --system .
 
+# Declare data volume for persistent storage
+VOLUME ["/app/.py_ipfs_lite"]
+
 # Expose the API and Swarm ports
 EXPOSE 5001
 EXPOSE 4001

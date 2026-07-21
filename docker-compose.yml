@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  ipfs-lite:
+    build: .
+    container_name: py-ipfs-lite
+    ports:
+      - "5001:5001" # API port
+      - "4001:4001" # Swarm port
+    volumes:
+      - ipfs_lite_data:/app/.py_ipfs_lite
+    command: ["daemon", "--api"]
+    restart: unless-stopped
+
+volumes:
+  ipfs_lite_data:
