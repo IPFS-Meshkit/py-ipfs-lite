@@ -332,24 +332,81 @@ class Peer:
             raw_bs = MemoryBlockStore()  # type: ignore[assignment]
         return BlockStoreAdapter(MetricsBlockStore(raw_bs))
 
+    def _resolve_dht(self) -> Any | None:
+        """
+        Extract the raw KadDHT from self.routing, whether or not IPNI
+        tiering is enabled. Returns None if no DHT is configured.
+        """
+        from py_ipfs_lite.routing import TieredRouting
+
+        routing = self.routing
+        if routing is None:
+            return None
+        if isinstance(routing, TieredRouting):
+            for r in routing.routers:
+                dht = getattr(r, "_routing", None)
+                if dht is not None:
+                    return dht
+            return None
+        return getattr(routing, "_routing", None)
+
     def _create_exchange(self) -> Any:
         raw_host = getattr(self.host, "_host", self.host)
         raw_bs = getattr(self.blockstore, "_store", self.blockstore)
-        bitswap = BitswapClient(raw_host, raw_bs)  # type: ignore[arg-type]
+
+        provider_query_manager = None
+        if not self.config.offline:
+            raw_dht = self._resolve_dht()
+            if raw_dht is not None:
+                from libp2p.bitswap.provider_query import ProviderQueryManager
+
+                provider_query_manager = ProviderQueryManager(
+                    raw_dht,
+                    max_providers=self.config.bitswap_max_providers,
+                    cache_ttl=self.config.bitswap_provider_cache_ttl,
+                )
+            else:
+                logger.debug(
+                    "No DHT available for Bitswap provider discovery "
+                    "(offline mode or DHT-less routing); falling back to "
+                    "broadcast-to-connected-peers only."
+                )
+
+        bitswap = BitswapClient(
+            raw_host,
+            raw_bs,
+            provider_query_manager=provider_query_manager,
+        )  # type: ignore[arg-type]
 
         class ExchangeAdapter:
             def __init__(self, exchange: Any) -> None:
                 self._exchange = exchange
 
             async def get_block(
-                self, cid: Any, peer_id: Any = None, timeout: float = 90
+                self,
+                cid: Any,
+                peer_id: Any = None,
+                timeout: float = 90,
+                return_peer: bool = False,
             ) -> Any:
-                data = await self._exchange.get_block(
-                    cid, peer_id=peer_id, timeout=timeout
-                )
+                if return_peer:
+                    res = await getattr(
+                        self._exchange, "get_block_with_peer", self._exchange.get_block
+                    )(cid, peer_id=peer_id, timeout=timeout)
+                    if isinstance(res, tuple):
+                        data, peer = res
+                    else:
+                        data = res
+                        res = (data, None)
+                else:
+                    data = await self._exchange.get_block(
+                        cid, peer_id=peer_id, timeout=timeout
+                    )
+                    res = data
+
                 if data:
                     IPFS_BITSWAP_BYTES_RECEIVED_TOTAL.inc(len(data))
-                return data
+                return res
 
             def __getattr__(self, name: Any) -> Any:
                 return getattr(self._exchange, name)
@@ -548,27 +605,49 @@ class Peer:
                 try:
                     with trio.fail_after(t_val):
                         providers = await self.routing.find_providers(cid_str)
-                    for provider in providers:
-                        if provider.peer_id == self.host.id():  # type: ignore[union-attr]
-                            continue
-                        try:
-                            with trio.fail_after(t_val):
-                                await self.host.connect(provider)  # type: ignore[union-attr]
-                        except Exception as e:
-                            logger.debug(
-                                f"Failed to connect to provider {provider.peer_id}: {e}"
-                            )
                 except Exception as e:
                     logger.warning(
                         f"Failed to find providers for {cid_str} in DHT: {e}"
                     )
+                    providers = []
 
+                async def _try_connect(provider: Any) -> None:
+                    if provider.peer_id == self.host.id():  # type: ignore[union-attr]
+                        return
+                    try:
+                        with trio.fail_after(min(5.0, t_val)):
+                            await self.host.connect(provider)  # type: ignore[union-attr]
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to connect to provider {provider.peer_id}: {e}"
+                        )
+
+                async with trio.open_nursery() as nursery:
+                    for provider in providers:
+                        nursery.start_soon(_try_connect, provider)
         from libp2p.bitswap.dag import is_directory_node
+
+        class _FetchAffinity:
+            def __init__(self) -> None:
+                self.last_good_peer: Any | None = None
+
+            def record(self, peer_id: Any | None) -> None:
+                if peer_id is not None:
+                    self.last_good_peer = peer_id
+
+        affinity = _FetchAffinity()
 
         # Helper to isolate trio.fail_after from the async generator
         async def fetch_block_with_timeout(current_cid: Any) -> Any:
             with trio.fail_after(t_val):
-                return await self._exchange.get_block(current_cid)  # type: ignore[union-attr]
+                res = await self._exchange.get_block(  # type: ignore[union-attr, call-arg]
+                    current_cid, peer_id=affinity.last_good_peer, return_peer=True
+                )
+                if res and isinstance(res, tuple):
+                    data, peer_id = res
+                    affinity.record(peer_id)
+                    return data
+                return res
 
         async def fetch_stream(current_cid: Any) -> AsyncGenerator[Any, None]:
             data = await fetch_block_with_timeout(current_cid)
@@ -596,9 +675,32 @@ class Peer:
                         yield unixfs.data
                     return
 
-                for link in links:
-                    async for chunk in fetch_stream(link.cid):
-                        yield chunk
+                batch_size = 32 if self.config.bitswap_batch_fetch else 1
+                for i in range(0, len(links), batch_size):
+                    batch_links = links[i : i + batch_size]
+
+                    if (
+                        self.config.bitswap_batch_fetch
+                        and len(batch_links) > 1
+                        and hasattr(self._exchange, "get_blocks_batch")
+                    ):
+                        cids = [link.cid for link in batch_links]
+                        try:
+                            with trio.fail_after(t_val):
+                                await self._exchange.get_blocks_batch(  # type: ignore[attr-defined, union-attr, call-arg]
+                                    cids,
+                                    peer_id=affinity.last_good_peer,
+                                    timeout=t_val,
+                                    batch_size=batch_size,
+                                )
+                        except Exception as e:
+                            logger.debug(
+                                f"Batch fetch failed for {len(cids)} CIDs: {e}"
+                            )
+
+                    for link in batch_links:
+                        async for chunk in fetch_stream(link.cid):
+                            yield chunk
 
         if output_path:
             with open(output_path, "wb") as f:

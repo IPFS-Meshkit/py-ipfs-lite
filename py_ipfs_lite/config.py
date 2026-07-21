@@ -22,6 +22,10 @@ class Config:
     default_timeout: float = 30.0
     max_upload_size: int = 104857600  # 100MB
     max_download_size: int = 104857600  # 100MB
+    # Bitswap DHT-backed provider discovery
+    bitswap_max_providers: int = 10
+    bitswap_provider_cache_ttl: float = 300.0
+    bitswap_batch_fetch: bool = False
 
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:
