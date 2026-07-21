@@ -128,7 +128,7 @@ async def add_file(request: Request, file: UploadFile = File(...)) -> Any:
     """Add a file to the node."""
     peer: Peer = request.app.state.peer
 
-    if not isinstance(file, UploadFile):
+    if not hasattr(file, "read"):
         raise HTTPException(status_code=400, detail="Missing or invalid file")
     body = await file.read()
 
@@ -139,13 +139,12 @@ async def add_file(request: Request, file: UploadFile = File(...)) -> Any:
     from py_ipfs_lite.services import files_service
 
     result = await files_service.add_file_from_stream(
-        peer, file.filename or "unknown", chunks()
+        peer, getattr(file, "filename", "unknown") or "unknown", chunks()
     )
 
     return JSONResponse(
         content={"Name": result.name, "Hash": result.cid, "Size": str(result.size)}
     )
-
 
 @app.post("/api/v0/cat")
 @app.get("/api/v0/cat")
@@ -176,7 +175,7 @@ async def dag_put(
         if not file_field and form.keys():
             file_field = form[list(form.keys())[0]]
 
-        if isinstance(file_field, UploadFile):
+        if hasattr(file_field, "read"):
             body = await file_field.read()
         elif file_field is not None:
             body = str(file_field).encode("utf-8")
@@ -257,7 +256,7 @@ async def block_put(request: Request, file: UploadFile = File(...)) -> Any:
     peer: Peer = request.app.state.peer
     from py_ipfs_lite.services import block_service
 
-    if not isinstance(file, UploadFile):
+    if not hasattr(file, "read"):
         raise HTTPException(status_code=400, detail="Missing or invalid file")
 
     data = await file.read()
