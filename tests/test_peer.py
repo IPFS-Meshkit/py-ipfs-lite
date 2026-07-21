@@ -446,3 +446,58 @@ async def test_fetch_local_block_with_affinity(memory_config):
 
             finally:
                 os.unlink(temp_path)
+
+
+@pytest.mark.trio
+async def test_fetch_local_block_with_affinity_batch():
+    import os
+    import tempfile
+    from copy import deepcopy
+
+    from libp2p.bitswap.cid import cid_to_bytes
+    from libp2p.bitswap.dag import decode_dag_pb
+
+    from py_ipfs_lite.peer import Peer
+    from py_ipfs_lite.config import Config
+
+    memory_config1 = Config(offline=False, blockstore_type="memory")
+    memory_config2 = Config(offline=False, blockstore_type="memory")
+    memory_config2.bitswap_batch_fetch = True
+
+    # Create two peers
+    async with Peer(memory_config1, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer1:
+        async with Peer(memory_config2, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer2:
+            from libp2p.peer.peerinfo import info_from_p2p_addr
+            # Connect them
+            peer1_addr = peer1.host.addrs()[0]
+            await peer2.host.connect(info_from_p2p_addr(peer1_addr))
+
+            # Create a file large enough to have at least 2 leaf blocks (>256KB)
+            data = b"x" * (300 * 1024)
+            with tempfile.NamedTemporaryFile(delete=False) as f:
+                f.write(data)
+                temp_path = f.name
+
+            try:
+                # Add to peer1
+                root_cid_str = await peer1.add_file(temp_path)
+
+                # Find the first child link
+                root_data = await peer1._exchange.get_block(root_cid_str)
+                links, _ = decode_dag_pb(root_data)
+                assert len(links) >= 2, "File should have at least 2 child blocks"
+
+                # Pre-seed ONLY the first child block into peer2's blockstore
+                first_child_cid = links[0].cid
+                first_child_data = await peer1._exchange.get_block(first_child_cid)
+                # Use raw put to blockstore so Bitswap knows about it
+                await peer2.blockstore.put(
+                    cid_to_bytes(first_child_cid), first_child_data
+                )
+
+                # Now have peer2 fetch the whole file
+                fetched_data = await peer2.get_file(root_cid_str)
+                assert fetched_data == data
+
+            finally:
+                os.unlink(temp_path)
