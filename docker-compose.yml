@@ -9,7 +9,7 @@ services:
       - "4001:4001" # Swarm port
     volumes:
       - ipfs_lite_data:/app/.py_ipfs_lite
-    command: ["daemon", "--api"]
+    command: ["daemon", "--api", "--api-host", "0.0.0.0"]
     restart: unless-stopped
 
 volumes:
