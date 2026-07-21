@@ -632,7 +632,7 @@ class Peer:
                 self.last_good_peer: Any | None = None
 
             def record(self, peer_id: Any | None) -> None:
-                if peer_id is not None:
+                if peer_id is not None and getattr(peer_id, "to_bytes", lambda: b"x")():
                     self.last_good_peer = peer_id
 
         affinity = _FetchAffinity()
