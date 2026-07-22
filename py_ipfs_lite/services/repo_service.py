@@ -19,7 +19,7 @@ async def get_repo_stat(peer: Peer) -> RepoStat:
         return RepoStat(
             num_objects=0, repo_size=0, repo_path=peer.config.blockstore_path or ""
         )
-    keys = peer.blockstore.all_keys()
+    keys = await peer.blockstore.all_keys()
     repo_size = 0
     for k in keys:
         cid_bytes = cid_to_bytes(parse_cid(k))
@@ -39,4 +39,4 @@ async def get_repo_version(peer: Peer) -> str:
 async def list_local_refs(peer: Peer) -> list[str]:
     if peer.blockstore is None:
         return []
-    return peer.blockstore.all_keys()
+    return await peer.blockstore.all_keys()

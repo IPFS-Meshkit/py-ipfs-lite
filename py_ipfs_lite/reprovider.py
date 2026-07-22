@@ -34,7 +34,7 @@ class Reprovider:
         strategy = self.peer.config.reprovider_strategy
 
         if strategy == "all":
-            cids = self.peer.blockstore.all_keys()
+            cids = await self.peer.blockstore.all_keys()
         elif strategy in ("pinned", "roots"):
             # Since pin_store currently only stores root pins (direct/recursive),
             # both "pinned" and "roots" iterate the pin_store directly.

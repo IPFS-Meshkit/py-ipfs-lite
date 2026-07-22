@@ -128,11 +128,12 @@ class BlockStoreAdapter:
         data = await self.get(cid)
         return len(data) if data else 0
 
-    def all_keys(self) -> list[str]:
+    async def all_keys(self) -> list[str]:
         from libp2p.bitswap.cid import format_cid_for_display, parse_cid
 
         return [
-            format_cid_for_display(parse_cid(c)) for c in self._store.get_all_cids()
+            format_cid_for_display(parse_cid(c))
+            for c in await self._store.get_all_cids()
         ]
 
 

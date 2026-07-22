@@ -372,11 +372,16 @@ class Peer:
                     "broadcast-to-connected-peers only."
                 )
 
+        from typing import cast
+
+        from libp2p.abc import IHost
+        from libp2p.bitswap.block_store import BlockStore
+
         bitswap = BitswapClient(
-            raw_host,
-            raw_bs,
+            cast(IHost, raw_host),
+            cast(BlockStore, raw_bs),
             provider_query_manager=provider_query_manager,
-        )  # type: ignore[arg-type]
+        )
 
         class ExchangeAdapter:
             def __init__(self, exchange: Any) -> None:
@@ -858,7 +863,7 @@ class Peer:
 
         async with self._gc_lock.write_lock():
             IPFS_GC_RUNS_TOTAL.inc()
-            all_cids = set(self.blockstore.all_keys())  # type: ignore[union-attr]
+            all_cids = set(await self.blockstore.all_keys())  # type: ignore[union-attr]
             reachable_cids = set()
 
             for cid_str, pin_type in self.pin_store.get_pins().items():
