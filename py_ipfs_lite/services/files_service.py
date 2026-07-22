@@ -29,20 +29,15 @@ async def add_file_from_stream(
     fd, path = tempfile.mkstemp()
     size = 0
     try:
-        print("Starting to read chunks...")
         with os.fdopen(fd, "wb") as f:
             async for chunk in chunks:
-                print(f"Read chunk of size {len(chunk)}")
                 size += len(chunk)
                 if max_size is not None and size > max_size:
                     raise PayloadTooLargeError(f"upload exceeded {max_size} bytes")
                 f.write(chunk)
-        print("Finished reading chunks, calling peer.add_file...")
         cid_str = await peer.add_file(path)
-        print(f"peer.add_file finished, cid={cid_str}")
         return AddFileResult(name=filename, cid=cid_str, size=size)
     finally:
-        print("Cleaning up temp file...")
         os.remove(path)
 
 

@@ -452,13 +452,12 @@ async def test_fetch_local_block_with_affinity(memory_config):
 async def test_fetch_local_block_with_affinity_batch():
     import os
     import tempfile
-    from copy import deepcopy
 
     from libp2p.bitswap.cid import cid_to_bytes
     from libp2p.bitswap.dag import decode_dag_pb
 
-    from py_ipfs_lite.peer import Peer
     from py_ipfs_lite.config import Config
+    from py_ipfs_lite.peer import Peer
 
     memory_config1 = Config(offline=False, blockstore_type="memory")
     memory_config2 = Config(offline=False, blockstore_type="memory")

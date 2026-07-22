@@ -11,8 +11,9 @@ class NodeIdentity:
 
 
 async def get_identity(peer: Peer) -> NodeIdentity:
-    if peer.host is None:
-        raise ValueError("Peer is not initialized")
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+    if not peer.host:
+        raise PeerNotStartedError("Peer is not initialized")
     import typing
 
     from py_ipfs_lite.interfaces import HostAdapter

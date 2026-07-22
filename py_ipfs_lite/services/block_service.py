@@ -11,8 +11,9 @@ class BlockStat:
 
 
 async def stat_block(peer: Peer, cid_str: str) -> BlockStat:
-    if peer.blockstore is None:
-        raise ValueError("Blockstore is not initialized")
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+    if not peer.blockstore:
+        raise PeerNotStartedError("Blockstore is not initialized")
     try:
         cid = parse_cid(cid_str)
     except ValueError as e:
@@ -29,8 +30,9 @@ async def remove_block(peer: Peer, cid_str: str) -> None:
 
 
 async def get_block(peer: Peer, cid_str: str) -> bytes:
-    if peer.blockstore is None:
-        raise ValueError("Blockstore is not initialized")
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+    if not peer.blockstore:
+        raise PeerNotStartedError("Blockstore is not initialized")
     try:
         cid = parse_cid(cid_str)
     except ValueError as e:
@@ -45,8 +47,9 @@ async def get_block(peer: Peer, cid_str: str) -> bytes:
 async def put_block(peer: Peer, data: bytes) -> str:
     from libp2p.bitswap.cid import compute_cid_v1
 
-    if peer.blockstore is None:
-        raise ValueError("Blockstore is not initialized")
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+    if not peer.blockstore:
+        raise PeerNotStartedError("Blockstore is not initialized")
 
     cid = compute_cid_v1(data, codec="raw")
     await peer.blockstore.put(cid, data)

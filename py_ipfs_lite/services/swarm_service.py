@@ -60,8 +60,9 @@ async def list_routing_table_peers(peer: Peer) -> SwarmPeers:
 
 
 async def connect_peer(peer: Peer, addr: str) -> None:
-    if peer.host is None:
-        raise ValueError("Peer is not initialized")
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+    if not peer.host:
+        raise PeerNotStartedError("Peer is not initialized")
     from libp2p.peer.peerinfo import info_from_p2p_addr
     from multiaddr import Multiaddr
 
@@ -71,8 +72,9 @@ async def connect_peer(peer: Peer, addr: str) -> None:
 
 
 async def disconnect_peer(peer: Peer, peer_id_str: str) -> None:
-    if peer.host is None:
-        raise ValueError("Peer is not initialized")
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+    if not peer.host:
+        raise PeerNotStartedError("Peer is not initialized")
     from libp2p.peer.id import ID
 
     peer_id = ID.from_base58(peer_id_str)

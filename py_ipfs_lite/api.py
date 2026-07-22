@@ -1,4 +1,3 @@
-import base64
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -23,36 +22,6 @@ from py_ipfs_lite.exceptions import (
     RoutingError,
 )
 from py_ipfs_lite.peer import Peer
-
-
-class DAGJSONEncoder(json.JSONEncoder):
-    def default(self, obj: Any) -> Any:
-        if isinstance(obj, bytes):
-            return {"/": {"bytes": base64.b64encode(obj).decode("ascii")}}
-
-        obj_type = type(obj).__name__
-
-        if obj_type == "CBORTag" and getattr(obj, "tag", None) == 42:
-            from py_ipfs_lite.peer import format_cid_for_display, parse_cid
-
-            cid_bytes = obj.value[1:]
-            link_cid = parse_cid(cid_bytes)
-            return {"/": format_cid_for_display(link_cid)}
-
-        if obj_type == "PBLink":
-            from py_ipfs_lite.peer import format_cid_for_display, parse_cid
-
-            res = {}
-            if getattr(obj, "Hash", None):
-                res["Hash"] = {"/": format_cid_for_display(parse_cid(obj.Hash))}
-            if getattr(obj, "Name", None):
-                res["Name"] = obj.Name
-            if getattr(obj, "Tsize", None) is not None:
-                res["Tsize"] = obj.Tsize
-            return res
-
-        return super().default(obj)
-
 
 logger = logging.getLogger("py_ipfs_lite.api")
 # The actual instantiation of the peer depends on how the daemon is run,
@@ -123,6 +92,12 @@ async def ipfs_lite_exception_handler(request: Request, exc: IPFSLiteError) -> A
     return JSONResponse(status_code=status_code, content={"detail": str(exc)})
 
 
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception) -> Any:
+    logger.error(f"Internal server error: {exc}")
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
+
+
 @app.post("/api/v0/add")
 async def add_file(request: Request, file: UploadFile = File(...)) -> Any:
     """Add a file to the node."""
@@ -175,7 +150,7 @@ async def dag_put(
         if not file_field and form.keys():
             file_field = form[list(form.keys())[0]]
 
-        if hasattr(file_field, "read"):
+        if isinstance(file_field, UploadFile):
             body = await file_field.read()
         elif file_field is not None:
             body = str(file_field).encode("utf-8")
@@ -397,12 +372,8 @@ async def swarm_peers(request: Request) -> Any:
     peer: Peer = request.app.state.peer
     from py_ipfs_lite.services import swarm_service
 
-    try:
-        peers = await swarm_service.list_connected_peers(peer)
-        return JSONResponse(content={"count": peers.count, "peers": peers.peers})
-    except Exception as e:
-        logger.error(f"Error getting swarm peers: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    peers = await swarm_service.list_connected_peers(peer)
+    return JSONResponse(content={"count": peers.count, "peers": peers.peers})
 
 
 @app.get("/debug/conns")
