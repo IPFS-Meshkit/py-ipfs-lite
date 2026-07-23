@@ -747,11 +747,16 @@ class Peer:
             await self.blockstore.put(cid, data)  # type: ignore[union-attr]
         cid_str = format_cid_for_display(cid)
         if self.routing:
-            try:
-                with trio.fail_after(t_val):
-                    await self.routing.provide(cid_str)
-            except Exception as e:
-                logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
+            async def _bg_provide() -> None:
+                try:
+                    with trio.fail_after(t_val):
+                        await self.routing.provide(cid_str)
+                except Exception as e:
+                    logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
+            if getattr(self, "_nursery", None):
+                self._nursery.start_soon(_bg_provide)
+            else:
+                logger.warning(f"No nursery to background provide {cid_str}")
         return cid_str
 
     async def get_node(
@@ -775,23 +780,33 @@ class Peer:
                 info = info_from_p2p_addr(maddr)
                 await self.host.connect(info)  # type: ignore[union-attr]
             elif self.routing:
-                try:
-                    with trio.fail_after(t_val):
-                        providers = await self.routing.find_providers(cid_str)
+                async def _try_connect(provider: Any) -> None:
+                    if provider.peer_id == self.host.id():  # type: ignore[union-attr]
+                        return
+                    try:
+                        with trio.fail_after(min(5.0, t_val)):
+                            await self.host.connect(provider)  # type: ignore[union-attr]
+                    except Exception as e:
+                        logger.debug(
+                            f"Failed to connect to provider {provider.peer_id}: {e}"
+                        )
+
+                async def _find_and_connect() -> None:
+                    try:
+                        with trio.fail_after(t_val):
+                            providers = await self.routing.find_providers(cid_str)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to find providers for {cid_str} in DHT: {e}"
+                        )
+                        providers = []
+                    
                     for provider in providers:
-                        if provider.peer_id == self.host.id():  # type: ignore[union-attr]
-                            continue
-                        try:
-                            with trio.fail_after(t_val):
-                                await self.host.connect(provider)  # type: ignore[union-attr]
-                        except Exception as e:
-                            logger.debug(
-                                f"Failed to connect to provider {provider.peer_id}: {e}"
-                            )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to find providers for {cid_str} in DHT: {e}"
-                    )
+                        if getattr(self, "_nursery", None):
+                            self._nursery.start_soon(_try_connect, provider)
+                
+                if getattr(self, "_nursery", None):
+                    self._nursery.start_soon(_find_and_connect)
 
             with trio.fail_after(t_val):
                 data = await self._exchange.get_block(cid)  # type: ignore[union-attr]
