@@ -967,7 +967,7 @@ class Peer:
 
         remote_sequence = 0
         try:
-            with trio.fail_after(t_val):
+            with trio.fail_after(min(5.0, t_val)):
                 entry = await _resolve_entry(self.routing, self.host.id())  # type: ignore[union-attr]
                 if entry and hasattr(entry, "sequence"):
                     remote_sequence = entry.sequence
@@ -984,15 +984,20 @@ class Peer:
             except Exception:
                 pass
 
-        with trio.fail_after(t_val):
-            await ipns_publish(
-                self.routing,
-                self._host_key.private_key,
-                self.host.id(),  # type: ignore[union-attr]
-                value,
-                sequence,
-                lifetime_hours,
-            )
+        try:
+            with trio.fail_after(t_val):
+                await ipns_publish(
+                    self.routing,
+                    self._host_key.private_key,
+                    self.host.id(),  # type: ignore[union-attr]
+                    value,
+                    sequence,
+                    lifetime_hours,
+                )
+        except Exception as e:
+            logger.warning(f"Failed to publish IPNS record to DHT: {e}")
+            raise RoutingError(f"Failed to publish IPNS record: {e}") from e
+
         return self.host.id().to_base58()  # type: ignore[union-attr]
 
     async def export_car(self, cid_str: str, output_path: str) -> None:
