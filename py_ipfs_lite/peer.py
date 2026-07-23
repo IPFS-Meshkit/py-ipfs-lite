@@ -934,8 +934,11 @@ class Peer:
 
         # We need to look up the routing
         peer_id = ID.from_base58(peer_id_str)
-        with trio.fail_after(t_val):
-            return await ipns_resolve(self.routing, peer_id)
+        try:
+            with trio.fail_after(t_val):
+                return await ipns_resolve(self.routing, peer_id)
+        except trio.TooSlowError as e:
+            raise RoutingError(f"IPNS resolution timed out after {t_val}s") from e
 
     async def publish_name(
         self, value: str, lifetime_hours: int = 24, timeout: float | None = None
