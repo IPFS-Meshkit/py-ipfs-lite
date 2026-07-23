@@ -581,11 +581,16 @@ class Peer:
                 )
         cid_str = format_cid_for_display(cid)
         if self.routing:
-            try:
-                with trio.fail_after(t_val):
-                    await self.routing.provide(cid_str)
-            except Exception as e:
-                logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
+            async def _bg_provide() -> None:
+                try:
+                    with trio.fail_after(t_val):
+                        await self.routing.provide(cid_str)
+                except Exception as e:
+                    logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
+            if getattr(self, "_nursery", None):
+                self._nursery.start_soon(_bg_provide)
+            else:
+                logger.warning(f"No nursery to background provide {cid_str}")
         return cid_str
 
     async def get_file(
@@ -609,15 +614,6 @@ class Peer:
                 info = info_from_p2p_addr(maddr)
                 await self.host.connect(info)  # type: ignore[union-attr]
             elif self.routing:
-                try:
-                    with trio.fail_after(t_val):
-                        providers = await self.routing.find_providers(cid_str)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to find providers for {cid_str} in DHT: {e}"
-                    )
-                    providers = []
-
                 async def _try_connect(provider: Any) -> None:
                     if provider.peer_id == self.host.id():  # type: ignore[union-attr]
                         return
@@ -629,9 +625,22 @@ class Peer:
                             f"Failed to connect to provider {provider.peer_id}: {e}"
                         )
 
-                async with trio.open_nursery() as nursery:
+                async def _find_and_connect() -> None:
+                    try:
+                        with trio.fail_after(t_val):
+                            providers = await self.routing.find_providers(cid_str)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to find providers for {cid_str} in DHT: {e}"
+                        )
+                        providers = []
+                    
                     for provider in providers:
-                        nursery.start_soon(_try_connect, provider)
+                        if getattr(self, "_nursery", None):
+                            self._nursery.start_soon(_try_connect, provider)
+                
+                if getattr(self, "_nursery", None):
+                    self._nursery.start_soon(_find_and_connect)
         from libp2p.bitswap.dag import is_directory_node
 
         class _FetchAffinity:
