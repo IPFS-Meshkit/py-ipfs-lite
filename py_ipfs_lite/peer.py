@@ -42,10 +42,12 @@ from libp2p.bitswap.cid import (
 from libp2p.bitswap.dag import MerkleDag, decode_dag_pb
 from libp2p.crypto.ed25519 import create_new_key_pair
 from libp2p.crypto.keys import KeyPair
+from libp2p.crypto.x25519 import create_new_key_pair as create_new_x25519_key_pair
 
 from libp2p.discovery.bootstrap.bootstrap import BootstrapDiscovery
 from libp2p.kad_dht.kad_dht import DHTMode, KadDHT
 from libp2p.peer.peerinfo import info_from_p2p_addr
+from libp2p.security.noise.transport import Transport as NoiseTransport
 from libp2p.security.tls.transport import TLSTransport
 
 
@@ -124,8 +126,10 @@ async def setup_libp2p(
     offline: bool = False,
 ) -> Any:
     maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in listen_addrs]
+    noise_key_pair = create_new_x25519_key_pair()
     sec_opt = {
         "/tls": TLSTransport(host_key),
+        "/noise": NoiseTransport(host_key, noise_privkey=noise_key_pair.private_key),
     }
     has_quic = any("quic" in str(a) for a in maddrs)
     raw_host = new_host(
@@ -245,8 +249,10 @@ class Peer:
         from libp2p.transport.quic.config import QUICTransportConfig
 
         maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs]
+        noise_key_pair = create_new_x25519_key_pair()
         sec_opt = {
             "/tls": TLSTransport(self._host_key),
+            "/noise": NoiseTransport(self._host_key, noise_privkey=noise_key_pair.private_key),
         }
         has_quic = any("quic" in str(a) for a in maddrs)
         # Use a 600-second idle timeout to match go-libp2p defaults.
