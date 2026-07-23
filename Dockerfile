@@ -19,11 +19,14 @@ WORKDIR /app
 # Install uv
 RUN pip install uv
 
+# Bust Docker cache when py-libp2p fix-1390 branch is updated
+ADD https://api.github.com/repos/sumanjeet0012/py-libp2p/git/refs/heads/fix-1390 /tmp/libp2p_version.json
+
 # Copy project files
 COPY . .
 
-# Install the application
-RUN uv pip install --system .
+# Install the application without using uv's internal cache for git dependencies
+RUN uv pip install --system --no-cache .
 
 # Declare data volume for persistent storage
 VOLUME ["/app/.py_ipfs_lite"]
