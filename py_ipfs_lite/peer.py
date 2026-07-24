@@ -487,11 +487,42 @@ class Peer:
             if self.routing and hasattr(self.routing, "start"):
                 self._nursery.start_soon(self.routing.start)
 
+            # Keep connections alive by sending periodic pings (fixes 25-30s idle disconnects)
+            self._nursery.start_soon(self._keep_alive_loop)
+
             self._state = PeerState.RUNNING
             self._started_event.set()
         except Exception:
             await self.close()
             raise
+
+    async def _keep_alive_loop(self) -> None:
+        """Periodically ping all connected peers to keep idle connections alive."""
+        from libp2p.host.ping import PingService
+        raw_host = getattr(self.host, "_host", self.host)
+        ping_service = PingService(raw_host)
+        
+        while True:
+            await trio.sleep(15.0)  # Ping every 15 seconds to beat 30s idle timeout
+            try:
+                network = raw_host.get_network()
+                connected_peers = set()
+                if hasattr(network, "connections"):
+                    for peer_id, conns in network.connections.items():
+                        if any(not c.is_closed for c in conns):
+                            connected_peers.add(peer_id)
+                
+                for peer_id in connected_peers:
+                    self._nursery.start_soon(self._ping_peer, ping_service, peer_id)
+            except Exception as e:
+                logger.debug(f"Keep-alive loop error: {e}")
+
+    async def _ping_peer(self, ping_service: Any, peer_id: Any) -> None:
+        try:
+            with trio.move_on_after(10.0):
+                await ping_service.ping(peer_id, ping_amt=1)
+        except Exception:
+            pass
 
     async def __aenter__(self) -> "Peer":
         if not self._started:
