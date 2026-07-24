@@ -121,6 +121,7 @@ async def add_file(request: Request, file: UploadFile = File(...)) -> Any:
         content={"Name": result.name, "Hash": result.cid, "Size": str(result.size)}
     )
 
+
 @app.post("/api/v0/cat")
 @app.get("/api/v0/cat")
 async def cat_file(
@@ -193,6 +194,18 @@ async def dag_get(
 
     encoded = json.dumps(result.node_data, cls=dag_encoding.DAGJSONEncoder)
     return Response(content=encoded, media_type="application/json")
+
+
+@app.get("/api/v0/swarm/connection_stats")
+async def swarm_connection_stats(request: Request) -> Any:
+    peer: Peer = request.app.state.peer
+    if not hasattr(peer, "connection_tracker") or peer.connection_tracker is None:
+        raise HTTPException(
+            status_code=503, detail="Connection tracker not initialized"
+        )
+
+    stats = list(peer.connection_tracker.stats.values())
+    return JSONResponse(content={"Stats": [s.model_dump() for s in stats]})
 
 
 @app.post("/api/v0/block/stat")

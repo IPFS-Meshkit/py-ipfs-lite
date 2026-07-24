@@ -12,7 +12,7 @@ class MockConfig:
 
 
 class MockBlockstore:
-    def all_keys(self):
+    async def all_keys(self):
         return ["cid1", "cid2"]
 
 

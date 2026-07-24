@@ -20,6 +20,8 @@ from py_ipfs_lite.metrics import (
     MetricsBlockStore,
 )
 
+from py_ipfs_lite.connection_tracker import ConnectionStatsTracker
+
 
 @dataclass
 class GCResult:
@@ -228,6 +230,7 @@ class Peer:
         self._gc_lock = RWLock()
         self._state = PeerState.STOPPED
         self._exit_stack = contextlib.AsyncExitStack()
+        self.connection_tracker = None
         self._auto_connector = None
         self._connection_pruner = None
 
@@ -252,7 +255,9 @@ class Peer:
         noise_key_pair = create_new_x25519_key_pair()
         sec_opt = {
             "/tls": TLSTransport(self._host_key),
-            "/noise": NoiseTransport(self._host_key, noise_privkey=noise_key_pair.private_key),
+            "/noise": NoiseTransport(
+                self._host_key, noise_privkey=noise_key_pair.private_key
+            ),
         }
         has_quic = any("quic" in str(a) for a in maddrs)
         # Use a 600-second idle timeout to match go-libp2p defaults.
@@ -289,6 +294,8 @@ class Peer:
             connection_config=quic_cfg,
             peerstore_opt=peerstore_opt,
         )
+        self.connection_tracker = ConnectionStatsTracker()
+        raw_host.get_network().register_notifee(self.connection_tracker)
         return HostAdapter(raw_host)
 
     async def _create_routing(self) -> Any:
@@ -581,12 +588,14 @@ class Peer:
                 )
         cid_str = format_cid_for_display(cid)
         if self.routing:
+
             async def _bg_provide() -> None:
                 try:
                     with trio.fail_after(t_val):
                         await self.routing.provide(cid_str)
                 except Exception as e:
                     logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
+
             if getattr(self, "_nursery", None):
                 self._nursery.start_soon(_bg_provide)
             else:
@@ -614,6 +623,7 @@ class Peer:
                 info = info_from_p2p_addr(maddr)
                 await self.host.connect(info)  # type: ignore[union-attr]
             elif self.routing:
+
                 async def _try_connect(provider: Any) -> None:
                     if provider.peer_id == self.host.id():  # type: ignore[union-attr]
                         return
@@ -634,11 +644,11 @@ class Peer:
                             f"Failed to find providers for {cid_str} in DHT: {e}"
                         )
                         providers = []
-                    
+
                     for provider in providers:
                         if getattr(self, "_nursery", None):
                             self._nursery.start_soon(_try_connect, provider)
-                
+
                 if getattr(self, "_nursery", None):
                     self._nursery.start_soon(_find_and_connect)
         from libp2p.bitswap.dag import is_directory_node
@@ -747,12 +757,14 @@ class Peer:
             await self.blockstore.put(cid, data)  # type: ignore[union-attr]
         cid_str = format_cid_for_display(cid)
         if self.routing:
+
             async def _bg_provide() -> None:
                 try:
                     with trio.fail_after(t_val):
                         await self.routing.provide(cid_str)
                 except Exception as e:
                     logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
+
             if getattr(self, "_nursery", None):
                 self._nursery.start_soon(_bg_provide)
             else:
@@ -780,6 +792,7 @@ class Peer:
                 info = info_from_p2p_addr(maddr)
                 await self.host.connect(info)  # type: ignore[union-attr]
             elif self.routing:
+
                 async def _try_connect(provider: Any) -> None:
                     if provider.peer_id == self.host.id():  # type: ignore[union-attr]
                         return
@@ -800,11 +813,11 @@ class Peer:
                             f"Failed to find providers for {cid_str} in DHT: {e}"
                         )
                         providers = []
-                    
+
                     for provider in providers:
                         if getattr(self, "_nursery", None):
                             self._nursery.start_soon(_try_connect, provider)
-                
+
                 if getattr(self, "_nursery", None):
                     self._nursery.start_soon(_find_and_connect)
 
