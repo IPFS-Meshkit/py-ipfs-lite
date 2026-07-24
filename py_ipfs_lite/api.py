@@ -196,6 +196,7 @@ async def dag_get(
     return Response(content=encoded, media_type="application/json")
 
 
+@app.post("/api/v0/swarm/connection_stats")
 @app.get("/api/v0/swarm/connection_stats")
 async def swarm_connection_stats(request: Request) -> Any:
     peer: Peer = request.app.state.peer
