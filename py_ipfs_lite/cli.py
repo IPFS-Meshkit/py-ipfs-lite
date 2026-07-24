@@ -70,10 +70,8 @@ async def create_and_start_peer(
 ) -> AsyncGenerator[Any, None]:
     if port <= 0:
         port = find_free_port()
-    # Build listen addresses for all three transports on the SAME port
+    # Build listen addresses for QUIC transport ONLY
     listen_addrs = [
-        Multiaddr(f"/ip4/0.0.0.0/tcp/{port}"),  # plain TCP
-        Multiaddr(f"/ip4/0.0.0.0/tcp/{port}/ws"),  # WebSocket over TCP
         Multiaddr(f"/ip4/0.0.0.0/udp/{port}/quic-v1"),  # QUIC-v1
     ]
     key_pair = _get_key_pair(seed, config)
