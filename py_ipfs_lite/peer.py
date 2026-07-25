@@ -535,8 +535,15 @@ class Peer:
         try:
             with trio.move_on_after(10.0):
                 await ping_service.ping(peer_id, ping_amt=1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Ping failed for {peer_id}, evicting: {e}")
+            try:
+                raw_host = getattr(self.host, "_host", self.host)
+                network = raw_host.get_network()
+                await network.close_peer(peer_id)
+                network.peerstore.clear_addrs(peer_id)
+            except Exception:
+                pass
 
     async def __aenter__(self) -> "Peer":
         if not self._started:
