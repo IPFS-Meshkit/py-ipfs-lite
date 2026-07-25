@@ -5,12 +5,15 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
+# Set timezone to IST
+ENV TZ=Asia/Kolkata
 
 # Install system dependencies required for cryptography (e.g. fastecdsa used by libp2p)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
     libgmp-dev \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -19,8 +22,8 @@ WORKDIR /app
 # Install uv
 RUN pip install uv
 
-# Bust Docker cache when py-libp2p fix-1390 branch is updated
-ADD https://api.github.com/repos/sumanjeet0012/py-libp2p/git/refs/heads/fix-1390 /tmp/libp2p_version.json
+# Bust Docker cache when py-libp2p audit-stability-improvements branch is updated
+ADD https://api.github.com/repos/sumanjeet0012/py-libp2p/git/refs/heads/audit-stability-improvements /tmp/libp2p_version.json
 
 # Copy project files
 COPY . .
