@@ -11,6 +11,9 @@ class PeerConnectionStats(BaseModel):
     first_connected_at: Optional[str] = None
     last_connected_at: Optional[str] = None
     last_disconnected_at: Optional[str] = None
+    security: Optional[str] = None
+    muxer: Optional[str] = None
+    transport: Optional[str] = None
 
 
 class ConnectionStatsTracker(INotifee):
@@ -30,16 +33,63 @@ class ConnectionStatsTracker(INotifee):
         peer_id = conn.muxed_conn.peer_id.to_base58()
         now_str = self._now()
 
+        security_type = "unknown"
+        muxer_type = "unknown"
+        transport_type = "unknown"
+
+        try:
+            muxer_conn = getattr(conn, "muxed_conn", None)
+            if muxer_conn is not None:
+                muxer_type = type(muxer_conn).__name__
+                if muxer_type == "QUICConnection":
+                    security_type = "quic-tls"
+                    transport_type = "quic"
+                    muxer_type = "quic-muxer"
+                else:
+                    sec_conn = getattr(muxer_conn, "secured_conn", None)
+                    if sec_conn is not None:
+                        security_type = type(sec_conn).__name__
+                        if security_type == "SecureSession":
+                            security_type = "Noise"
+                        
+                        # Unwrap transport
+                        curr = sec_conn
+                        for _ in range(10):
+                            if hasattr(curr, "conn") and curr.conn is not None and type(curr.conn).__name__ != type(curr).__name__:
+                                curr = curr.conn
+                            elif hasattr(curr, "raw_conn") and curr.raw_conn is not None and type(curr.raw_conn).__name__ != type(curr).__name__:
+                                curr = curr.raw_conn
+                            elif hasattr(curr, "transport_conn") and curr.transport_conn is not None and type(curr.transport_conn).__name__ != type(curr).__name__:
+                                curr = curr.transport_conn
+                            elif hasattr(curr, "read_writer") and curr.read_writer is not None and type(curr.read_writer).__name__ != type(curr).__name__:
+                                curr = curr.read_writer
+                            elif hasattr(curr, "read_write_closer") and curr.read_write_closer is not None and type(curr.read_write_closer).__name__ != type(curr).__name__:
+                                curr = curr.read_write_closer
+                            else:
+                                break
+                        transport_type = type(curr).__name__
+                        if transport_type in ("TCPConnection", "RawConnection"):
+                            transport_type = "tcp"
+        except Exception:
+            pass
+
         if peer_id not in self.stats:
             self.stats[peer_id] = PeerConnectionStats(
                 peer_id=peer_id,
                 first_connected_at=now_str,
+                security=security_type,
+                muxer=muxer_type,
+                transport=transport_type,
             )
 
         stats = self.stats[peer_id]
         stats.total_connections += 1
         stats.current_connections += 1
         stats.last_connected_at = now_str
+        # Update protocols in case they changed
+        stats.security = security_type
+        stats.muxer = muxer_type
+        stats.transport = transport_type
 
     async def disconnected(self, network: INetwork, conn: INetConn) -> None:
         peer_id = conn.muxed_conn.peer_id.to_base58()
