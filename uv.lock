@@ -1074,7 +1074,7 @@ wheels = [
 [[package]]
 name = "libp2p"
 version = "0.7.0"
-source = { git = "https://github.com/sumanjeet0012/py-libp2p.git?rev=audit-stability-improvements#4e4558babdd49bffcde8e3ac9cd47988e8b74d8c" }
+source = { git = "https://github.com/sumanjeet0012/py-libp2p.git?rev=audit-stability-improvements#19bf47aabace1f03c46d544e6309df689717d3a1" }
 dependencies = [
     { name = "aioquic" },
     { name = "anyio" },
