@@ -467,20 +467,7 @@ class Peer:
             if self.dag_service is None:
                 self.dag_service = self._create_dag_service()
 
-            maddrs = [
-                Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs
-            ]
-            await self._exit_stack.enter_async_context(self.host.run(maddrs))  # type: ignore[union-attr]
-
-            self._nursery = await self._exit_stack.enter_async_context(
-                trio.open_nursery()
-            )
-            if hasattr(self._exchange, "set_nursery"):
-                self._exchange.set_nursery(self._nursery)
-
-            self._nursery.start_soon(self.reprovider.start)
-
-            # Initialize and start connection managers
+            # Initialize and update connection managers BEFORE starting host
             raw_swarm = self.host._host.get_network()  # type: ignore[union-attr]
             if hasattr(raw_swarm, "connection_config") and raw_swarm.connection_config:
                 raw_swarm.connection_config.high_watermark = (
@@ -495,6 +482,19 @@ class Peer:
 
                 if hasattr(raw_swarm, "auto_connector"):
                     raw_swarm.auto_connector.auto_connect_interval = 30.0
+
+            maddrs = [
+                Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs
+            ]
+            await self._exit_stack.enter_async_context(self.host.run(maddrs))  # type: ignore[union-attr]
+
+            self._nursery = await self._exit_stack.enter_async_context(
+                trio.open_nursery()
+            )
+            if hasattr(self._exchange, "set_nursery"):
+                self._exchange.set_nursery(self._nursery)
+
+            self._nursery.start_soon(self.reprovider.start)
 
             await self._exchange.start()
 
