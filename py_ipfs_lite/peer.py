@@ -395,6 +395,7 @@ class Peer:
         class ExchangeAdapter:
             def __init__(self, exchange: Any) -> None:
                 self._exchange = exchange
+                self._session = exchange.new_session() if hasattr(exchange, "new_session") else exchange
 
             async def get_block(
                 self,
@@ -404,23 +405,36 @@ class Peer:
                 return_peer: bool = False,
             ) -> Any:
                 if return_peer:
-                    res = await getattr(
-                        self._exchange, "get_block_with_peer", self._exchange.get_block
-                    )(cid, peer_id=peer_id, timeout=timeout)
-                    if isinstance(res, tuple):
-                        data, peer = res
+                    # Session doesn't support get_block_with_peer natively, we just return the block and None
+                    # or if the exchange still has it, we try to use it.
+                    if hasattr(self._session, "get_block_with_peer"):
+                        res = await self._session.get_block_with_peer(cid, peer_id=peer_id, timeout=timeout)
+                        if isinstance(res, tuple):
+                            data, peer = res
+                        else:
+                            data = res
+                            res = (data, None)
                     else:
-                        data = res
+                        with trio.fail_after(timeout):
+                            data = await self._session.get_block(cid)
                         res = (data, None)
                 else:
-                    data = await self._exchange.get_block(
-                        cid, peer_id=peer_id, timeout=timeout
-                    )
+                    with trio.fail_after(timeout):
+                        data = await self._session.get_block(cid)
+                    res = data
                     res = data
 
                 if data:
                     IPFS_BITSWAP_BYTES_RECEIVED_TOTAL.inc(len(data))
                 return res
+
+            async def get_blocks_batch(self, cids: Any) -> Any:
+                if hasattr(self._session, "get_blocks_batch"):
+                    return await self._session.get_blocks_batch(cids)
+                elif hasattr(self._exchange, "get_blocks_batch"):
+                    return await self._exchange.get_blocks_batch(cids)
+                else:
+                    raise AttributeError("Neither session nor exchange has get_blocks_batch")
 
             def __getattr__(self, name: Any) -> Any:
                 return getattr(self._exchange, name)

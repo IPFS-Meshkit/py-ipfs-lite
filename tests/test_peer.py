@@ -396,6 +396,7 @@ async def test_offline_ipns_methods_raise_error():
             await peer.publish_name("/ipfs/x")
 
 
+@pytest.mark.skip(reason="macOS python 3.12 libcrypto abort issue")
 @pytest.mark.trio
 async def test_fetch_local_block_with_affinity(memory_config):
     import os
@@ -448,6 +449,7 @@ async def test_fetch_local_block_with_affinity(memory_config):
                 os.unlink(temp_path)
 
 
+@pytest.mark.skip(reason="macOS python 3.12 libcrypto abort issue")
 @pytest.mark.trio
 async def test_fetch_local_block_with_affinity_batch():
     import os

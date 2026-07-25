@@ -133,7 +133,7 @@ class BlockStoreAdapter:
 
         return [
             format_cid_for_display(parse_cid(c))
-            for c in await self._store.get_all_cids()
+            for c in self._store.get_all_cids()
         ]
 
 
