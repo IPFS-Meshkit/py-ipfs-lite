@@ -254,7 +254,7 @@ class Peer:
         maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs]
         noise_key_pair = create_new_x25519_key_pair()
         sec_opt = {
-            "/tls": TLSTransport(self._host_key),
+            "/tls/1.0.0": TLSTransport(self._host_key),
             "/noise": NoiseTransport(
                 self._host_key, noise_privkey=noise_key_pair.private_key
             ),

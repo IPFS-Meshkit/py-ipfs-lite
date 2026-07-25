@@ -50,7 +50,11 @@ class ConnectionStatsTracker(INotifee):
                     if sec_conn is not None:
                         security_type = type(sec_conn).__name__
                         if security_type == "SecureSession":
-                            security_type = "Noise"
+                            if hasattr(sec_conn, "conn"):
+                                if type(sec_conn.conn).__name__ == "TLSReadWriter":
+                                    security_type = "tls"
+                                elif type(sec_conn.conn).__name__ == "NoiseTransportReadWriter":
+                                    security_type = "Noise"
                         
                         # Unwrap transport
                         curr = sec_conn
@@ -68,7 +72,7 @@ class ConnectionStatsTracker(INotifee):
                             else:
                                 break
                         transport_type = type(curr).__name__
-                        if transport_type in ("TCPConnection", "RawConnection"):
+                        if transport_type in ("TCPConnection", "RawConnection", "TLSReadWriter", "NoiseTransportReadWriter"):
                             transport_type = "tcp"
         except Exception:
             pass
