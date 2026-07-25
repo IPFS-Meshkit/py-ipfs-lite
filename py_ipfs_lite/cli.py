@@ -224,6 +224,11 @@ def main() -> None:
     # Suppress "no transport found" spam for unsupported protocols
     # (WebRTC, WebTransport) — these are expected, not errors
     logging.getLogger("libp2p.transport.manager").setLevel(logging.ERROR)
+    
+    # Enable propagation for libp2p since py-libp2p disables it by default
+    logging.getLogger("libp2p").propagate = True
+    logging.getLogger("libp2p").setLevel(logging.INFO)
+    logging.getLogger("libp2p.network.auto_connector").setLevel(logging.INFO)
 
     try:
         if parsed_args.command == "daemon":
