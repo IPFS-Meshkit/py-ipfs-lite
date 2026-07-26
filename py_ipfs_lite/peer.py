@@ -524,8 +524,19 @@ class Peer:
                         if any(not c.is_closed for c in conns):
                             connected_peers.add(peer_id)
 
+                # Cap concurrency so a large post-crash reconnect burst
+                # (e.g. auto-connector bringing in 300+ peers at once) doesn't
+                # open hundreds of QUIC streams simultaneously and trigger
+                # "write() after reset()" cascades.
+                _MAX_CONCURRENT_PINGS = 20
+                sem = trio.Semaphore(_MAX_CONCURRENT_PINGS)
+
+                async def _ping_with_sem(peer_id: Any) -> None:
+                    async with sem:
+                        await self._ping_peer(peer_id)
+
                 for peer_id in connected_peers:
-                    self._nursery.start_soon(self._ping_peer, peer_id)
+                    self._nursery.start_soon(_ping_with_sem, peer_id)
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
 
