@@ -54,12 +54,16 @@ def _get_key_pair(seed: str | None, config: Config | None = None) -> Any:
     return None
 
 
-DEFAULT_BOOTSTRAP_PEERS = [
-    "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
-    "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
-    "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
-    "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
-]
+_env_peers = os.environ.get("IPFS_LITE_BOOTSTRAP_PEERS")
+if _env_peers:
+    DEFAULT_BOOTSTRAP_PEERS = [p.strip() for p in _env_peers.split(",") if p.strip()]
+else:
+    DEFAULT_BOOTSTRAP_PEERS = [
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+        "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
+    ]
 
 from contextlib import asynccontextmanager
 
@@ -221,9 +225,24 @@ def main() -> None:
     logging.getLogger("multiaddr.transforms").setLevel(logging.WARNING)
     logging.getLogger("multiaddr.codecs.cid").setLevel(logging.WARNING)
     logging.getLogger("libp2p.tools.anyio_service").setLevel(logging.WARNING)
-    # Suppress "no transport found" spam for unsupported protocols
-    # (WebRTC, WebTransport) — these are expected, not errors
-    logging.getLogger("libp2p.transport.manager").setLevel(logging.ERROR)
+
+    if parsed_args.debug:
+        logging.getLogger("libp2p.protocol_muxer.multiselect_client").setLevel(
+            logging.DEBUG
+        )
+        logging.getLogger("libp2p.transport.quic.listener").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.transport.tcp.tcp").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.transport.cmux").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.security.security_multistream").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.protocol_muxer.multiselect").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.transport.manager").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.network.swarm").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.rcmgr.manager").setLevel(logging.DEBUG)
+    else:
+        # Suppress "no transport found" spam for unsupported protocols
+        # (WebRTC, WebTransport) — these are expected, not errors
+        logging.getLogger("libp2p.transport.manager").setLevel(logging.ERROR)
+        logging.getLogger("libp2p.network.swarm").setLevel(logging.INFO)
     
     # Enable propagation for libp2p since py-libp2p disables it by default
     logging.getLogger("libp2p").propagate = True

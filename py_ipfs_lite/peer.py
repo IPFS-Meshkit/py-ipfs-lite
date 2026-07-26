@@ -130,8 +130,8 @@ async def setup_libp2p(
     maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in listen_addrs]
     noise_key_pair = create_new_x25519_key_pair()
     sec_opt = {
-        "/tls": TLSTransport(host_key),
         "/noise": NoiseTransport(host_key, noise_privkey=noise_key_pair.private_key),
+        # "/tls/1.0.0": TLSTransport(host_key),
     }
     has_quic = any("quic" in str(a) for a in maddrs)
     raw_host = new_host(
@@ -254,10 +254,10 @@ class Peer:
         maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs]
         noise_key_pair = create_new_x25519_key_pair()
         sec_opt = {
-            "/tls/1.0.0": TLSTransport(self._host_key),
             "/noise": NoiseTransport(
                 self._host_key, noise_privkey=noise_key_pair.private_key
             ),
+            # "/tls/1.0.0": TLSTransport(self._host_key),
         }
         has_quic = any("quic" in str(a) for a in maddrs)
         # Use a 600-second idle timeout to match go-libp2p defaults.
@@ -578,7 +578,19 @@ class Peer:
             self._state = PeerState.STOPPED
 
     async def bootstrap(self, peers: list[str]) -> None:
-        """Connect to bootstrap peers and join the DHT network."""
+        """Connect to bootstrap peers and join the DHT network.
+
+        Dials every address in *peers* and registers them in the peerstore.
+        If a KadDHT routing instance is present, attempts a routing-table
+        refresh so the node can discover additional peers.
+
+        The refresh fires up to ``RANDOM_WALK_CONCURRENCY`` (10) concurrent
+        FIND_NODE random-walks.  When the bootstrapped peer has an **empty**
+        routing table — e.g. a freshly-started isolated Kubo daemon — every
+        walk returns immediately with zero results, so the refresh completes
+        quickly.  The guard below (``move_on_after``) ensures we never block
+        the caller indefinitely even if peers are slow to respond.
+        """
         self._ensure_started()
         discovery = BootstrapDiscovery(
             swarm=self.host.get_network(),  # type: ignore
@@ -586,13 +598,25 @@ class Peer:
         )
         await discovery.start()
 
-        # After bootstrap connections are established, force a routing table refresh
-        # to discover more peers before the bootstrap nodes drop our idle connection.
+        # Best-effort routing-table refresh: when the bootstrap peer returns an
+        # empty FIND_NODE response (no known peers) the random-walk queries
+        # complete immediately.  We still guard with move_on_after so that slow
+        # peers cannot block the caller indefinitely.
+        # 30 s >> normal empty-table response time (< 1 s) but won't stall tests.
         if self.routing and hasattr(self.routing, "refresh_routing_table"):
+            _RT_REFRESH_TIMEOUT = 30.0
             try:
-                await self.routing.refresh_routing_table()
+                with trio.move_on_after(_RT_REFRESH_TIMEOUT) as _scope:
+                    await self.routing.refresh_routing_table()
+                if _scope.cancelled_caught:
+                    logger.debug(
+                        "Routing-table refresh did not finish within %.0f s "
+                        "(bootstrap peer likely has an empty routing table). "
+                        "Connection is active — continuing.",
+                        _RT_REFRESH_TIMEOUT,
+                    )
             except Exception as e:
-                logger.error(f"Failed to refresh routing table after bootstrap: {e}")
+                logger.error("Failed to refresh routing table after bootstrap: %s", e)
 
     async def add_file(
         self,
