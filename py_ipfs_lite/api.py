@@ -205,8 +205,23 @@ async def swarm_connection_stats(request: Request) -> Any:
             status_code=503, detail="Connection tracker not initialized"
         )
 
-    stats = list(peer.connection_tracker.stats.values())
-    return JSONResponse(content={"Stats": [s.model_dump() for s in stats]})
+    raw_host = getattr(peer.host, "_host", peer.host)
+    identified_peers = getattr(raw_host, "_identified_peers", {})
+    
+    from libp2p.peer.id import ID
+    stats = []
+    for s in peer.connection_tracker.stats.values():
+        dump = s.model_dump()
+        try:
+            peer_id_obj = ID.from_base58(s.peer_id)
+            if peer_id_obj in identified_peers:
+                dump["identify_completed"] = True
+                dump["identify_completed_at"] = identified_peers[peer_id_obj]
+        except Exception:
+            pass
+        stats.append(dump)
+
+    return JSONResponse(content={"Stats": stats})
 
 
 @app.post("/api/v0/block/stat")

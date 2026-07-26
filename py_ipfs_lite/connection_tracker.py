@@ -14,6 +14,10 @@ class PeerConnectionStats(BaseModel):
     security: Optional[str] = None
     muxer: Optional[str] = None
     transport: Optional[str] = None
+    identify_completed: bool = False
+    identify_completed_at: Optional[str] = None
+    ping_completed: bool = False
+    first_ping_at: Optional[str] = None
 
 
 class ConnectionStatsTracker(INotifee):
@@ -22,6 +26,12 @@ class ConnectionStatsTracker(INotifee):
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+    def mark_ping_completed(self, peer_id: str) -> None:
+        if peer_id in self.stats:
+            self.stats[peer_id].ping_completed = True
+            if self.stats[peer_id].first_ping_at is None:
+                self.stats[peer_id].first_ping_at = self._now()
 
     async def opened_stream(self, network: INetwork, stream: INetStream) -> None:
         pass

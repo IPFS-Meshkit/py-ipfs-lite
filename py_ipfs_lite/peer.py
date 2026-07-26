@@ -535,6 +535,8 @@ class Peer:
         try:
             with trio.move_on_after(10.0):
                 await ping_service.ping(peer_id, ping_amt=1)
+                if self.connection_tracker:
+                    self.connection_tracker.mark_ping_completed(peer_id.to_base58())
         except Exception as e:
             logger.debug(f"Ping failed for {peer_id}, evicting: {e}")
             try:
