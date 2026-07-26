@@ -512,10 +512,8 @@ class Peer:
 
     async def _keep_alive_loop(self) -> None:
         """Periodically ping all connected peers to keep idle connections alive."""
-        from libp2p.host.ping import PingService
         raw_host = getattr(self.host, "_host", self.host)
-        ping_service = PingService(raw_host)
-        
+
         while True:
             await trio.sleep(15.0)  # Ping every 15 seconds to beat 30s idle timeout
             try:
@@ -525,25 +523,35 @@ class Peer:
                     for peer_id, conns in network.connections.items():
                         if any(not c.is_closed for c in conns):
                             connected_peers.add(peer_id)
-                
+
                 for peer_id in connected_peers:
-                    self._nursery.start_soon(self._ping_peer, ping_service, peer_id)
+                    self._nursery.start_soon(self._ping_peer, peer_id)
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
 
-    async def _ping_peer(self, ping_service: Any, peer_id: Any) -> None:
+    async def _ping_peer(self, peer_id: Any) -> None:
+        # Create a fresh PingService for every call so that PingService's
+        # internal _outbound_streams cache is always empty.  Reusing a single
+        # PingService instance caused an AttributeError on the second keep-alive
+        # cycle: ping_iter tried to call stream.is_closed() on the cached
+        # NetStream object, which does not have that attribute.
+        from libp2p.host.ping import PingService
+        raw_host = getattr(self.host, "_host", self.host)
+        ping_service = PingService(raw_host)
         try:
             with trio.move_on_after(10.0):
                 await ping_service.ping(peer_id, ping_amt=1)
                 if self.connection_tracker:
                     self.connection_tracker.mark_ping_completed(peer_id.to_base58())
         except Exception as e:
-            logger.debug(f"Ping failed for {peer_id}, evicting: {e}")
+            # Log the failure but do NOT clear peerstore addresses.
+            # Clearing addresses on a transient ping failure means we can
+            # never reconnect to the peer; just close the dead connection and
+            # let the caller reconnect if needed.
+            logger.debug(f"Keep-alive ping failed for {peer_id}: {e}")
             try:
-                raw_host = getattr(self.host, "_host", self.host)
                 network = raw_host.get_network()
                 await network.close_peer(peer_id)
-                network.peerstore.clear_addrs(peer_id)
             except Exception:
                 pass
 
