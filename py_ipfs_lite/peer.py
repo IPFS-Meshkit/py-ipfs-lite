@@ -293,10 +293,13 @@ class Peer:
         # Disable graceful degradation: it reduces the connection limit when
         # the counter spikes during recovery — the opposite of what we need —
         # and never recovers because the degraded limit stays low permanently.
+        # Disable circuit breaker: after 5 failed dials it opens and blocks
+        # all new connections for 60 s, stalling recovery after a crash.
         rcmgr_max = max(self.config.conn_mgr_high_water * 4, 4000)
         resource_manager = new_resource_manager(
             limits=ResourceLimits(max_connections=rcmgr_max, max_streams=10000),
             enable_graceful_degradation=False,
+            enable_circuit_breaker=False,
         )
 
         raw_host = new_host(
