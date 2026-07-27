@@ -250,6 +250,7 @@ class Peer:
 
     async def _create_host(self) -> Any:
         from libp2p.transport.quic.config import QUICTransportConfig
+        from libp2p.rcmgr.manager import ResourceLimits, new_resource_manager
 
         maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs]
         noise_key_pair = create_new_x25519_key_pair()
@@ -286,6 +287,18 @@ class Peer:
             datastore = SQLiteDatastoreSync(path=db_path)
             peerstore_opt = SyncPersistentPeerStore(datastore=datastore)
 
+        # Set rcmgr max_connections well above our high watermark to give
+        # enough headroom for pending connection attempts during recovery
+        # bursts (auto-connector may attempt 300+ simultaneously).
+        # Disable graceful degradation: it reduces the connection limit when
+        # the counter spikes during recovery — the opposite of what we need —
+        # and never recovers because the degraded limit stays low permanently.
+        rcmgr_max = max(self.config.conn_mgr_high_water * 4, 4000)
+        resource_manager = new_resource_manager(
+            limits=ResourceLimits(max_connections=rcmgr_max, max_streams=10000),
+            enable_graceful_degradation=False,
+        )
+
         raw_host = new_host(
             key_pair=self._host_key,
             listen_addrs=maddrs,
@@ -293,6 +306,7 @@ class Peer:
             enable_quic=has_quic,
             connection_config=quic_cfg,
             peerstore_opt=peerstore_opt,
+            resource_manager=resource_manager,
         )
         self.connection_tracker = ConnectionStatsTracker()
         raw_host.get_network().register_notifee(self.connection_tracker)
