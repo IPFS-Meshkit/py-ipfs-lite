@@ -216,12 +216,172 @@ except Exception:
 
 ---
 
+## 6. Inbound resource-scope leak + double-acquire on `setattr` failure
+
+**File:** `libp2p/network/swarm.py`
+
+### Issue
+
+In `upgrade_inbound_raw_conn`, after `open_connection()` acquires a
+`conn_scope`, the code tries to stash it on `muxed_conn` via `setattr`:
+
+```python
+try:
+    setattr(muxed_conn, "_resource_scope", conn_scope)
+except Exception:
+    pass   # ← conn_scope is now orphaned, never closed
+```
+
+If `setattr` raises (e.g. the muxed connection is frozen / has `__slots__`),
+`conn_scope` is acquired (`_current_connections += 1`) but never stored
+anywhere, so `close()` is never called — permanent leak.
+
+Worse: `add_conn` then does `getattr(muxed_conn, "_resource_scope", None)` —
+finds `None` — and calls `open_connection()` **again**, double-counting the
+physical connection as two slots in `_current_connections`.
+
+### Fix
+
+On `setattr` failure, perform a full teardown before raising:
+
+```python
+except Exception:
+    conn_scope.close()          # release the slot
+    await muxed_conn.close()   # tear down the half-built connection
+    await secured_conn.close()
+    await raw_conn.close()
+    if pre_scope is not None:
+        pre_scope.close()
+    raise SwarmException("Failed to attach resource scope to muxed connection")
+```
+
+The outer `except SwarmException: raise` already present on the inbound path
+propagates this correctly.
+
+---
+
+## 7. Outbound `SwarmException` silently swallowed by outer handler
+
+**File:** `libp2p/network/swarm.py`
+
+### Issue
+
+In `upgrade_outbound_raw_conn`, the entire resource-manager block is wrapped by
+`except Exception: pass` (the outer handler). This means:
+
+- `raise SwarmException("Connection denied by resource manager")` — swallowed
+- `raise SwarmException("Failed to attach resource scope …")` — also swallowed
+
+Execution falls through to `add_conn(muxed_conn, …)` regardless, which then
+re-acquires a second resource-manager slot for the same connection.
+
+### Fix
+
+Add `except SwarmException: raise` before the fallback `except Exception: pass`:
+
+```python
+        except SwarmException:
+            raise          # ← propagate denials to the dialer
+        except Exception:
+            pass
+```
+
+---
+
+## 8. Auto-connector flat 300 s retry cooldown
+
+**File:** `libp2p/network/auto_connector.py`
+
+### Issue
+
+`_connect_cooldown = 300.0` is a flat constant. A dead/unreachable peer gets a
+full-cost retry every 5 minutes forever, contributing to the periodic rcmgr
+spike pattern and wasting the dial budget.
+
+### Fix
+
+Replace the flat constant with per-peer exponential backoff driven by a
+`_failure_counts` dict:
+
+```
+failures=1 → 300 s
+failures=2 → 600 s
+failures=3 → 1200 s
+failures=4 → 2400 s
+failures=5+ → 3600 s  (capped)
+```
+
+`record_successful_connection---
+
+## 9. Auto-connector connection starvation — stamp-at-start pattern
+
+**File:** `libp2p/network/auto_connector.py`
+
+### Issue
+
+`_dial_candidate` stamped `_last_connect_attempt[peer_id] = time.time()`
+**at the start of every dial**, before knowing whether it succeeded or failed:
+
+```python
+self._last_connect_attempt[peer_id] = time.time()   # ← at dial start
+with trio.move_on_after(dial_timeout):
+    await self.swarm.dial_peer(peer_id)
+logger.info(f"Auto-connected to peer {peer_id}")    # ← even on timeout!
+```
+
+After the initial burst (dialing ~600 candidates to reach 300 connections),
+every dialed peer entered a 300 s cooldown window regardless of outcome.
+The next auto-connector cycle found `_should_skip_peer()` returning `True`
+for **all** candidates → `dialed = 0` → no recovery when connections dropped.
+
+A second sub-bug: `trio.move_on_after` exits silently on timeout (no exception
+is raised), so the code fell through and logged "Auto-connected" for peers that
+actually timed out — also consuming a 300 s cooldown slot with no actual
+connection established.
+
+### Fix
+
+Stamp `_last_connect_attempt` only on **failure or timeout**, clear it on
+**success**:
+
+```python
+async def _dial_candidate(peer_id: ID) -> None:
+    async with dial_limiter:
+        connected = False
+        try:
+            with trio.move_on_after(dial_timeout) as cancel_scope:
+                await self.swarm.dial_peer(peer_id)
+                connected = True          # only if dial returned before timeout
+            if cancel_scope.cancelled_caught:
+                self._failure_counts[peer_id] += 1
+                self._last_connect_attempt[peer_id] = time.time()
+            elif connected:
+                # Success: clear cooldown so peer re-dialable immediately if it drops
+                self._last_connect_attempt.pop(peer_id, None)
+                self._failure_counts.pop(peer_id, None)
+        except Exception as e:
+            self._failure_counts[peer_id] += 1
+            self._last_connect_attempt[peer_id] = time.time()
+```
+
+| Outcome | `_last_connect_attempt` | `_failure_counts` |
+|---------|------------------------|-------------------|
+| Success | **cleared** | **cleared** |
+| Timeout (`cancelled_caught`) | stamped | incremented |
+| Exception | stamped | incremented |
+
+---
+
 ## Summary table
 
 | # | Symptom | Root cause | Fix location |
-|---|---------|-----------|--------------|
+|---|---------|-----------|--------------| 
 | 1 | Connection drops after ~30 s; peer evicted with addresses wiped | `PingService` stream cache → `AttributeError: is_closed` → aggressive eviction | `peer.py` — fresh `PingService` per call, remove `clear_addrs` |
 | 2 | `write() after reset()` errors after crash recovery | 400 concurrent QUIC ping streams with no limit | `peer.py` — `Semaphore(20)` on keep-alive pings |
 | 3 | All connections blocked with `num_connections=1` | `GracefulDegradation` ratcheted `max_connections` down to 500 and stuck there | `peer.py` — `enable_graceful_degradation=False`, `max_connections=4000` |
 | 4 | Recovery stalls for 60 s after 5 failed dials | `CircuitBreaker` opens on 5 failures, blocks all `acquire_connection` calls | `peer.py` — `enable_circuit_breaker=False` |
-| 5 | `_current_connections` drifts above live connection count permanently | Three paths in `swarm.py` where scope is acquired but `close()` never called | `swarm.py` — `try/except BaseException` guard in `add_conn`; explicit scope release on `setattr` failure |
+| 5 | `_current_connections` drifts above live connection count permanently | Three paths in `swarm.py` where scope is acquired but `close()` never called | `swarm.py` — `try/except BaseException` guard in `add_conn`; explicit scope release on `setattr` failure (outbound) |
+| 6 | `_current_connections` double-acquire + leak on inbound `setattr` failure | `setattr` failure on inbound `muxed_conn` silently swallowed — scope not closed, then `add_conn` re-opens a second scope for the same connection | `swarm.py` — full teardown (scope + muxed/secured/raw conn + pre_scope) + `raise SwarmException` in `upgrade_inbound_raw_conn` |
+| 7 | Outbound resource-manager denials silently ignored — denied connection still proceeds to `add_conn` | Outer `except Exception: pass` in `upgrade_outbound_raw_conn` swallows both `SwarmException("Connection denied")` and `SwarmException("Failed to attach scope")` | `swarm.py` — add `except SwarmException: raise` before the outer `except Exception: pass` |
+| 8 | Dead peers retried every 5 min forever, wasting dial budget and spiking rcmgr | `auto_connector._connect_cooldown` is a flat 300 s regardless of failure history | `auto_connector.py` — exponential backoff: 300 s → 600 s → 1200 s → … capped at 3600 s |
+| 9 | After initial burst, node stops making new connections even as they drop — `dialed=0` every cycle | `_last_connect_attempt` stamped at dial **start** puts all dialed peers in 300 s cooldown; `trio.move_on_after` silently swallows timeouts and logs false "Auto-connected" | `auto_connector.py` — stamp only on failure/timeout, clear on success; detect timeout via `cancel_scope.cancelled_caught` |
