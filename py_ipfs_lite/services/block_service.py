@@ -45,7 +45,7 @@ async def get_block(peer: Peer, cid_str: str) -> bytes:
 
 
 async def put_block(peer: Peer, data: bytes) -> str:
-    from libp2p.bitswap.cid import compute_cid_v1
+    from libp2p.bitswap.cid import compute_cid_v1, format_cid_for_display
 
     from py_ipfs_lite.exceptions import PeerNotStartedError
     if not peer.blockstore:
@@ -53,4 +53,4 @@ async def put_block(peer: Peer, data: bytes) -> str:
 
     cid = compute_cid_v1(data, codec="raw")
     await peer.blockstore.put(cid, data)
-    return str(cid)
+    return format_cid_for_display(cid)

@@ -142,13 +142,25 @@ async def cat_file(
 
     from py_ipfs_lite.services import files_service
 
+    stream = files_service.get_file_stream(peer, arg)
     try:
-        stream = files_service.get_file_stream(peer, arg)
-        return StreamingResponse(stream, media_type="application/octet-stream")
+        first_chunk = await stream.__anext__()
+    except StopAsyncIteration:
+        first_chunk = b""
     except BlockNotFoundError:
         raise HTTPException(status_code=404, detail=f"Block not found: {arg}")
+    except (InvalidCidError, ValueError):
+        raise HTTPException(status_code=400, detail=f"Invalid CID: {arg}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    async def _stream_with_first() -> AsyncGenerator[bytes, None]:
+        if first_chunk:
+            yield first_chunk
+        async for chunk in stream:
+            yield chunk
+
+    return StreamingResponse(_stream_with_first(), media_type="application/octet-stream")
 
 
 @app.post("/api/v0/dag/put")
@@ -221,7 +233,7 @@ async def swarm_connection_stats(request: Request) -> Any:
 
     raw_host = getattr(peer.host, "_host", peer.host)
     identified_peers = getattr(raw_host, "_identified_peers", {})
-    
+
     from libp2p.peer.id import ID
     stats = []
     for s in peer.connection_tracker.stats.values():
