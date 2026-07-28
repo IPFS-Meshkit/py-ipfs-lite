@@ -166,8 +166,9 @@ async def run_get(
                     f"Saved to {out_path} (size: {os.path.getsize(out_path)} bytes)"
                 )
             else:
-                logger.info(f"Fetched {len(content)} bytes")
-                print(content.decode("utf-8", errors="replace"))
+                data = await content.read()
+                logger.info(f"Fetched {len(data)} bytes")
+                print(data.decode("utf-8", errors="replace"))
     except Exception as e:
         logger.error(f"Error: {e}")
 

@@ -133,8 +133,13 @@ async def cat_file(
 
     from py_ipfs_lite.services import files_service
 
-    stream = files_service.get_file_stream(peer, arg)
-    return StreamingResponse(stream, media_type="application/octet-stream")
+    try:
+        stream = files_service.get_file_stream(peer, arg)
+        return StreamingResponse(stream, media_type="application/octet-stream")
+    except BlockNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Block not found: {arg}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/v0/dag/put")
@@ -442,13 +447,22 @@ async def repo_version(request: Request) -> Any:
 async def name_publish(
     request: Request,
     arg: str = Query(..., description="IPFS path of the object to be published"),
-    lifetime: int = Query(24),
+    lifetime: str = Query("24h"),
 ) -> Any:
     """Publish an IPNS record."""
     peer: Peer = request.app.state.peer
     from py_ipfs_lite.services import naming_service
 
-    result_name = await naming_service.publish_name(peer, arg, lifetime_hours=lifetime)
+    # Parse lifetime: "24h", "3600s", or plain number (hours)
+    lifetime_hours = 24
+    if lifetime.endswith("h"):
+        lifetime_hours = int(lifetime[:-1])
+    elif lifetime.endswith("s"):
+        lifetime_hours = max(1, int(lifetime[:-1]) // 3600)
+    else:
+        lifetime_hours = int(lifetime)
+
+    result_name = await naming_service.publish_name(peer, arg, lifetime_hours=lifetime_hours)
     return JSONResponse(content={"Name": result_name, "Value": arg})
 
 

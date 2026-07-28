@@ -81,9 +81,7 @@ async def test_car_export_partial_dag(fs_config, tmp_path):
         child_cid = await peer.add_node({"msg": "child"}, codec="dag-cbor")
         parent_cid = await peer.add_node({"link": {"/": child_cid}}, codec="dag-cbor")
 
-        from libp2p.bitswap.cid import cid_to_bytes, parse_cid
-
-        child_cid_bytes = cid_to_bytes(parse_cid(child_cid))
+        child_cid_bytes = child_cid.cid_bytes
 
         # Capture the child bytes
         child_data = await peer.blockstore.get(child_cid_bytes)

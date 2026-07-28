@@ -10,7 +10,12 @@ from libp2p.bitswap.cid import (
 )
 from libp2p.bitswap.dag import decode_dag_pb
 
-from py_ipfs_lite.peer import decode_node
+
+def _decode_node(data: bytes, codec: str) -> Any:
+    """Lazy import wrapper to avoid circular dependency with peer.py."""
+    from py_ipfs_lite.peer import decode_node
+
+    return decode_node(data, codec)
 
 
 def extract_cids(obj: Any, strict_missing: bool = False) -> list[bytes]:
@@ -93,7 +98,7 @@ async def walk_dag(
                 pass
         elif str(norm_codec) in ("dag-json", "dag-cbor", "dag-jose", "ipld"):
             try:
-                decoded = decode_node(data, codec)
+                decoded = _decode_node(data, codec)
                 for cid_bytes in extract_cids(decoded, strict_missing):
                     queue.append(cid_bytes)
             except Exception:

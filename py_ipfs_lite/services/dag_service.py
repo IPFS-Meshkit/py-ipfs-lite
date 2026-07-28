@@ -14,10 +14,10 @@ class DagPutResult:
 
 async def put_node(peer: Peer, node_data: Any, codec: str = "dag-json") -> DagPutResult:
     try:
-        cid_str = await peer.add_node(node_data, codec=codec)
+        node = await peer.add_node(node_data, codec=codec)
     except RecursionError as e:
         raise DagTooDeepError("DAG node exceeds maximum nesting depth") from e
-    return DagPutResult(cid=cid_str)
+    return DagPutResult(cid=str(node))
 
 
 @dataclass

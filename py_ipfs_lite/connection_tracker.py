@@ -43,7 +43,14 @@ class ConnectionStatsTracker(INotifee):
         pass
 
     async def connected(self, network: INetwork, conn: INetConn) -> None:
-        peer_id = conn.muxed_conn.peer_id.to_base58()
+        try:
+            peer_id = conn.muxed_conn.peer_id.to_base58()
+        except AttributeError:
+            # QUIC connections may have different structure
+            try:
+                peer_id = str(getattr(conn, "peer_id", "unknown"))
+            except Exception:
+                return
         now_str = self._now()
 
         security_type = "unknown"
@@ -109,7 +116,13 @@ class ConnectionStatsTracker(INotifee):
         stats.transport = transport_type
 
     async def disconnected(self, network: INetwork, conn: INetConn) -> None:
-        peer_id = conn.muxed_conn.peer_id.to_base58()
+        try:
+            peer_id = conn.muxed_conn.peer_id.to_base58()
+        except AttributeError:
+            try:
+                peer_id = str(getattr(conn, "peer_id", "unknown"))
+            except Exception:
+                return
         now_str = self._now()
 
         if peer_id in self.stats:

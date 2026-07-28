@@ -66,14 +66,36 @@ def _check_nan(node: Any) -> None:
             _check_nan(item)
 
 
+class _IPLDNodeEncoder(json.JSONEncoder):
+    """JSON encoder that serialises IPLDNode objects to their CID strings."""
+
+    def default(self, o: Any) -> Any:
+        if isinstance(o, IPLDNode):
+            return str(o)
+        return super().default(o)
+
+
+def _convert_ipld_nodes(obj: Any) -> Any:
+    """Recursively convert IPLDNode instances to strings for CBOR encoding."""
+    if isinstance(obj, IPLDNode):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _convert_ipld_nodes(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_ipld_nodes(item) for item in obj]
+    return obj
+
+
 def encode_node(node: Any, codec: str) -> bytes:
     if codec in ("dag-json", "dag-cbor", "cbor"):
         _check_nan(node)
 
     if codec == "dag-json":
-        return json.dumps(node, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        return json.dumps(
+            node, separators=(",", ":"), allow_nan=False, cls=_IPLDNodeEncoder
+        ).encode("utf-8")
     elif codec in ("dag-cbor", "cbor"):
-        return cbor2.dumps(node)
+        return cbor2.dumps(_convert_ipld_nodes(node))
     elif codec == "raw":
         if isinstance(node, bytes):
             return node
@@ -113,6 +135,160 @@ from py_ipfs_lite.pin import PinStore
 from py_ipfs_lite.reprovider import Reprovider
 
 logger = logging.getLogger("py_ipfs_lite.peer")
+
+
+class IPLDNode:
+    """Lightweight wrapper around a CID and its raw data, mimicking ipld.Node."""
+
+    __slots__ = ("_cid_str", "_cid_bytes", "_data", "_links", "_codec")
+
+    def __init__(
+        self,
+        cid_str: str,
+        data: bytes | None = None,
+        links: list[Any] | None = None,
+        codec: str | None = None,
+    ) -> None:
+        self._cid_str = cid_str
+        self._cid_bytes = cid_to_bytes(parse_cid(cid_str)) if cid_str else b""
+        self._data = data
+        self._links = links or []
+        self._codec = codec
+
+    def cid(self) -> str:
+        return self._cid_str
+
+    @property
+    def cid_bytes(self) -> bytes:
+        """The raw CID bytes (multicodec-prefixed)."""
+        return self._cid_bytes
+
+    def __str__(self) -> str:
+        return self._cid_str
+
+    def __repr__(self) -> str:
+        return f"IPLDNode({self._cid_str})"
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, IPLDNode):
+            return self._cid_str == other._cid_str
+        if isinstance(other, str):
+            return self._cid_str == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self._cid_str)
+
+    def raw_data(self) -> bytes | None:
+        return self._data
+
+    def links(self) -> list[Any]:
+        return self._links
+
+    def codec(self) -> str | None:
+        return self._codec
+
+    def loggable(self) -> dict[str, Any]:
+        info: dict[str, Any] = {"cid": self._cid_str}
+        if self._codec:
+            info["codec"] = self._codec
+        if self._links:
+            info["links"] = len(self._links)
+        return info
+
+
+class SeekableReader:
+    """Seekable reader wrapper for get_file, mimicking ufsio.ReadSeekCloser."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._pos = 0
+
+    async def read(self, n: int = -1) -> bytes:
+        if n == -1:
+            result = self._data[self._pos :]
+            self._pos = len(self._data)
+        else:
+            result = self._data[self._pos : self._pos + n]
+            self._pos += len(result)
+        return result
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        if whence == 0:
+            self._pos = offset
+        elif whence == 1:
+            self._pos += offset
+        elif whence == 2:
+            self._pos = len(self._data) + offset
+        else:
+            raise ValueError(f"Invalid whence: {whence}")
+        self._pos = max(0, min(self._pos, len(self._data)))
+        return self._pos
+
+    def tell(self) -> int:
+        return self._pos
+
+    async def close(self) -> None:
+        pass
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, bytes):
+            return self._data == other
+        if isinstance(other, SeekableReader):
+            return self._data == other._data
+        return NotImplemented
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"SeekableReader({len(self._data)} bytes, pos={self._pos})"
+
+    def __iter__(self):
+        """Yield the full data as a single chunk for sync iteration."""
+        yield self._data
+
+
+class PeerSession:
+    """Session-scoped block retrieval, creating a fresh BitswapSession per instance."""
+
+    def __init__(self, exchange: Any) -> None:
+        self._exchange = exchange
+        self._session = (
+            exchange.new_session() if hasattr(exchange, "new_session") else exchange
+        )
+
+    async def get_block(
+        self,
+        cid: Any,
+        peer_id: Any = None,
+        timeout: float = 90,
+    ) -> bytes | None:
+        return await self._session.get_block(cid, peer_id=peer_id, timeout=timeout)
+
+    async def get_blocks_batch(
+        self,
+        cids: list[Any],
+        peer_id: Any = None,
+        timeout: float = 90,
+        batch_size: int = 32,
+    ) -> dict[bytes, bytes]:
+        if hasattr(self._session, "get_blocks_batch"):
+            return await self._session.get_blocks_batch(
+                cids, peer_id=peer_id, timeout=timeout, batch_size=batch_size
+            )
+        raise AttributeError("Session does not support get_blocks_batch")
+
+
+def _to_cid_str(value: Any) -> str:
+    """Coerce a CID-like value (str, IPLDNode, CIDObject) to a plain string."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, IPLDNode):
+        return str(value)
+    if hasattr(value, "cid") and not isinstance(value, str):
+        return str(value.cid)
+    return str(value)
 
 
 def default_bootstrap_peers() -> list[str]:
@@ -412,7 +588,9 @@ class Peer:
         class ExchangeAdapter:
             def __init__(self, exchange: Any) -> None:
                 self._exchange = exchange
-                self._session = exchange.new_session() if hasattr(exchange, "new_session") else exchange
+
+            def _new_session(self) -> Any:
+                return self._exchange.new_session() if hasattr(self._exchange, "new_session") else self._exchange
 
             async def get_block(
                 self,
@@ -421,37 +599,37 @@ class Peer:
                 timeout: float = 90,
                 return_peer: bool = False,
             ) -> Any:
+                session = self._new_session()
                 if return_peer:
-                    # Session doesn't support get_block_with_peer natively, we just return the block and None
-                    # or if the exchange still has it, we try to use it.
-                    if hasattr(self._session, "get_block_with_peer"):
-                        res = await self._session.get_block_with_peer(cid, peer_id=peer_id, timeout=timeout)
-                        if isinstance(res, tuple):
-                            data, peer = res
-                        else:
-                            data = res
-                            res = (data, None)
-                    else:
-                        with trio.fail_after(timeout):
-                            data = await self._session.get_block(cid)
-                        res = (data, None)
+                    with trio.fail_after(timeout):
+                        data = await session.get_block(cid, peer_id=peer_id, timeout=timeout)
+                    return (data, peer_id)
                 else:
                     with trio.fail_after(timeout):
-                        data = await self._session.get_block(cid)
-                    res = data
-                    res = data
+                        res = await session.get_block(cid, peer_id=peer_id, timeout=timeout)
 
-                if data:
-                    IPFS_BITSWAP_BYTES_RECEIVED_TOTAL.inc(len(data))
+                if res and not isinstance(res, tuple):
+                    IPFS_BITSWAP_BYTES_RECEIVED_TOTAL.inc(len(res))
                 return res
 
             async def get_blocks_batch(self, cids: Any) -> Any:
-                if hasattr(self._session, "get_blocks_batch"):
-                    return await self._session.get_blocks_batch(cids)
+                session = self._new_session()
+                if hasattr(session, "get_blocks_batch"):
+                    return await session.get_blocks_batch(cids)
                 elif hasattr(self._exchange, "get_blocks_batch"):
                     return await self._exchange.get_blocks_batch(cids)
                 else:
                     raise AttributeError("Neither session nor exchange has get_blocks_batch")
+
+            async def start(self) -> None:
+                await self._exchange.start()
+
+            async def stop(self) -> None:
+                await self._exchange.stop()
+
+            def set_nursery(self, nursery: Any) -> None:
+                if hasattr(self._exchange, "set_nursery"):
+                    self._exchange.set_nursery(nursery)
 
             def __getattr__(self, name: Any) -> Any:
                 return getattr(self._exchange, name)
@@ -471,8 +649,6 @@ class Peer:
 
         self._state = PeerState.STARTING
         try:
-            self._started_event = trio.Event()
-
             if self.host is None:
                 self.host = await self._create_host()
             if self.routing is None:
@@ -522,7 +698,6 @@ class Peer:
             self._nursery.start_soon(self._keep_alive_loop)
 
             self._state = PeerState.RUNNING
-            self._started_event.set()
         except Exception:
             await self.close()
             raise
@@ -613,8 +788,11 @@ class Peer:
             await self._exit_stack.aclose()
             self._state = PeerState.STOPPED
 
-    async def bootstrap(self, peers: list[str]) -> None:
+    async def bootstrap(self, peers: list[str] | list[Any]) -> None:
         """Connect to bootstrap peers and join the DHT network.
+
+        Accepts either multiaddr strings or peer.AddrInfo-like objects with
+        ``id`` and ``addrs`` attributes.
 
         Dials every address in *peers* and registers them in the peerstore.
         If a KadDHT routing instance is present, attempts a routing-table
@@ -628,9 +806,21 @@ class Peer:
         the caller indefinitely even if peers are slow to respond.
         """
         self._ensure_started()
+        from libp2p.peer.peerinfo import PeerInfo
+
+        str_addrs: list[str] = []
+        for p in peers:
+            if isinstance(p, str):
+                str_addrs.append(p)
+            elif hasattr(p, "addrs") and hasattr(p, "id"):
+                for addr in p.addrs:
+                    str_addrs.append(f"{addr}/p2p/{p.id}")
+            else:
+                str_addrs.append(str(p))
+
         discovery = BootstrapDiscovery(
             swarm=self.host.get_network(),  # type: ignore
-            bootstrap_addrs=peers,  # type: ignore[union-attr]
+            bootstrap_addrs=str_addrs,  # type: ignore[union-attr]
         )
         await discovery.start()
 
@@ -660,7 +850,13 @@ class Peer:
         params: AddParams | None = None,
         timeout: float | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
-    ) -> str:
+    ) -> IPLDNode:
+        """Add a file to the DAGService. Returns an IPLDNode with the root CID.
+
+        Accepts a filesystem path, raw bytes, or a readable binary stream.
+        The returned IPLDNode supports ``str(node)`` for backward compatibility
+        (returns the CID string).
+        """
         self._ensure_started()
         t_val = timeout if timeout is not None else self.config.default_timeout
         chunk_size: int | None = None
@@ -680,27 +876,28 @@ class Peer:
 
             wrapped_callback = _wrapped_callback
 
+        raw_cid: Any = None
         async with self._gc_lock.read_lock():
             if isinstance(path_or_stream, str):
-                cid = await self.dag_service.add_file(  # type: ignore[union-attr]
+                raw_cid = await self.dag_service.add_file(  # type: ignore[union-attr]
                     path_or_stream,
                     chunk_size=chunk_size,
                     progress_callback=wrapped_callback,
                     wrap_with_directory=False,
                 )
             elif isinstance(path_or_stream, bytes):
-                cid = await self.dag_service.add_bytes(  # type: ignore[union-attr]
+                raw_cid = await self.dag_service.add_bytes(  # type: ignore[union-attr]
                     path_or_stream,
                     chunk_size=chunk_size,
                     progress_callback=wrapped_callback,
                 )
             else:
-                cid = await self.dag_service.add_stream(  # type: ignore[union-attr]
+                raw_cid = await self.dag_service.add_stream(  # type: ignore[union-attr]
                     path_or_stream,
                     chunk_size=chunk_size,
                     progress_callback=wrapped_callback,
                 )
-        cid_str = format_cid_for_display(cid)
+        cid_str = format_cid_for_display(raw_cid)
         if self.routing:
 
             async def _bg_provide() -> None:
@@ -714,19 +911,30 @@ class Peer:
                 self._nursery.start_soon(_bg_provide)
             else:
                 logger.warning(f"No nursery to background provide {cid_str}")
-        return cid_str
+
+        return IPLDNode(cid_str)
 
     async def get_file(
         self,
-        cid_str: str,
+        cid: Any,
         provider_addr: str | None = None,
         output_path: str | None = None,
         timeout: float | None = None,
         stream: bool = False,
-    ) -> bytes | AsyncIterator[bytes] | None:
+    ) -> bytes | SeekableReader | AsyncIterator[bytes] | None:
+        """Fetch a file by its CID.
+
+        *cid* may be a CID string or an IPLDNode.
+
+        Returns:
+            - ``SeekableReader`` (default): seekable, async-readable wrapper
+              around the full file bytes — mimics ``ufsio.ReadSeekCloser``.
+            - ``bytes``: when *stream=False* (legacy default, buffers everything).
+            - ``AsyncIterator[bytes]``: when *stream=True*, yields chunks.
+            - ``None``: when *output_path* is set (written to disk).
+        """
         self._ensure_started()
-        if not isinstance(cid_str, str):
-            raise TypeError(f"cid_str must be a string, got {type(cid_str).__name__}")
+        cid_str = _to_cid_str(cid)
         t_val = timeout if timeout is not None else self.config.default_timeout
         cid = parse_cid(cid_str)
         has_root = await self.blockstore.has(cid_to_bytes(cid))  # type: ignore[union-attr]
@@ -736,35 +944,7 @@ class Peer:
                 maddr = Multiaddr(provider_addr)
                 info = info_from_p2p_addr(maddr)
                 await self.host.connect(info)  # type: ignore[union-attr]
-            elif self.routing:
 
-                async def _try_connect(provider: Any) -> None:
-                    if provider.peer_id == self.host.id():  # type: ignore[union-attr]
-                        return
-                    try:
-                        with trio.fail_after(min(5.0, t_val)):
-                            await self.host.connect(provider)  # type: ignore[union-attr]
-                    except Exception as e:
-                        logger.debug(
-                            f"Failed to connect to provider {provider.peer_id}: {e}"
-                        )
-
-                async def _find_and_connect() -> None:
-                    try:
-                        with trio.fail_after(t_val):
-                            providers = await self.routing.find_providers(cid_str)
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to find providers for {cid_str} in DHT: {e}"
-                        )
-                        providers = []
-
-                    for provider in providers:
-                        if getattr(self, "_nursery", None):
-                            self._nursery.start_soon(_try_connect, provider)
-
-                if getattr(self, "_nursery", None):
-                    self._nursery.start_soon(_find_and_connect)
         from libp2p.bitswap.dag import is_directory_node
 
         class _FetchAffinity:
@@ -781,7 +961,8 @@ class Peer:
         async def fetch_block_with_timeout(current_cid: Any) -> Any:
             with trio.fail_after(t_val):
                 res = await self._exchange.get_block(  # type: ignore[union-attr, call-arg]
-                    current_cid, peer_id=affinity.last_good_peer, return_peer=True
+                    current_cid, peer_id=affinity.last_good_peer, return_peer=True,
+                    timeout=t_val,
                 )
                 if res and isinstance(res, tuple):
                     data, peer_id = res
@@ -851,18 +1032,24 @@ class Peer:
         if stream:
             return fetch_stream(cid)
 
-        # Default behavior: buffer and return bytes
+        # Buffer and return a seekable reader (ufsio.ReadSeekCloser equivalent)
         chunks = []
         async for chunk in fetch_stream(cid):
             chunks.append(chunk)
-        return b"".join(chunks)
+        return SeekableReader(b"".join(chunks))
 
     async def add_node(
         self,
         node: dict[Any, Any] | list[Any] | str | int | bytes,
         codec: str = "dag-json",
         timeout: float | None = None,
-    ) -> str:
+        params: AddParams | None = None,
+    ) -> IPLDNode:
+        """Store an IPLD node in the blockstore and return it as an IPLDNode.
+
+        The returned IPLDNode supports ``str(node)`` returning the CID string
+        for backward compatibility.
+        """
         self._ensure_started()
         t_val = timeout if timeout is not None else self.config.default_timeout
         data = encode_node(node, codec)
@@ -883,17 +1070,17 @@ class Peer:
                 self._nursery.start_soon(_bg_provide)
             else:
                 logger.warning(f"No nursery to background provide {cid_str}")
-        return cid_str
+        return IPLDNode(cid_str)
 
     async def get_node(
         self,
-        cid_str: str,
+        cid: Any,
         provider_addr: str | None = None,
         timeout: float | None = None,
     ) -> dict[Any, Any] | list[Any] | str | int | bytes:
+        """Retrieve and decode an IPLD node. *cid* may be a string or IPLDNode."""
         self._ensure_started()
-        if not isinstance(cid_str, str):
-            raise TypeError(f"cid_str must be a string, got {type(cid_str).__name__}")
+        cid_str = _to_cid_str(cid)
         t_val = timeout if timeout is not None else self.config.default_timeout
         cid = parse_cid(cid_str)
 
@@ -905,63 +1092,60 @@ class Peer:
                 maddr = Multiaddr(provider_addr)
                 info = info_from_p2p_addr(maddr)
                 await self.host.connect(info)  # type: ignore[union-attr]
-            elif self.routing:
-
-                async def _try_connect(provider: Any) -> None:
-                    if provider.peer_id == self.host.id():  # type: ignore[union-attr]
-                        return
-                    try:
-                        with trio.fail_after(min(5.0, t_val)):
-                            await self.host.connect(provider)  # type: ignore[union-attr]
-                    except Exception as e:
-                        logger.debug(
-                            f"Failed to connect to provider {provider.peer_id}: {e}"
-                        )
-
-                async def _find_and_connect() -> None:
-                    try:
-                        with trio.fail_after(t_val):
-                            providers = await self.routing.find_providers(cid_str)
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to find providers for {cid_str} in DHT: {e}"
-                        )
-                        providers = []
-
-                    for provider in providers:
-                        if getattr(self, "_nursery", None):
-                            self._nursery.start_soon(_try_connect, provider)
-
-                if getattr(self, "_nursery", None):
-                    self._nursery.start_soon(_find_and_connect)
 
             with trio.fail_after(t_val):
-                data = await self._exchange.get_block(cid)  # type: ignore[union-attr]
+                data = await self._exchange.get_block(cid, timeout=t_val)  # type: ignore[union-attr]
 
         if data is None:
             raise BlockNotFoundError(f"Block not found for CID: {cid_str}")
         codec = parse_cid_codec(cid_to_bytes(cid))
         return decode_node(data, codec)
 
-    async def remove_node(self, cid_str: str) -> None:
+    async def remove_node(self, cid: Any) -> None:
+        """Delete a block locally. *cid* may be a string or IPLDNode."""
         self._ensure_started()
-        if not isinstance(cid_str, str):
-            raise TypeError(f"cid_str must be a string, got {type(cid_str).__name__}")
-        cid = parse_cid(cid_str)
-        await self.blockstore.delete(cid.buffer)  # type: ignore[union-attr]
+        cid_str = _to_cid_str(cid)
+        parsed = parse_cid(cid_str)
+        await self.blockstore.delete(cid_to_bytes(parsed))  # type: ignore[union-attr]
 
-    async def add_pin(self, cid_str: str, recursive: bool = True) -> None:
+    # ── ipld.DAGService interface ──────────────────────────────────────────
+
+    async def add(self, node: Any, codec: str = "dag-json") -> IPLDNode:
+        """Standard DAGService ``Add`` — store an IPLD node and return it."""
+        return await self.add_node(node, codec=codec)
+
+    async def get(self, cid_str: str) -> Any:
+        """Standard DAGService ``Get`` — retrieve and decode an IPLD node."""
+        return await self.get_node(cid_str)
+
+    async def remove(self, cid_str: str) -> None:
+        """Standard DAGService ``Remove`` — delete a block locally."""
+        await self.remove_node(cid_str)
+
+    async def get_many(self, cid_strs: list[str]) -> list[Any]:
+        """Standard DAGService ``GetMany`` — retrieve multiple IPLD nodes in parallel."""
+        results: list[Any] = [None] * len(cid_strs)
+
+        async def _fetch_one(idx: int, c: str) -> None:
+            results[idx] = await self.get_node(c)
+
+        async with trio.open_nursery() as nursery:
+            for idx, c in enumerate(cid_strs):
+                nursery.start_soon(_fetch_one, idx, c)
+
+        return results
+
+    async def add_pin(self, cid: Any, recursive: bool = True) -> None:
+        """Pin a CID. *cid* may be a string or IPLDNode."""
         self._ensure_started()
-        if not isinstance(cid_str, str):
-            raise TypeError(f"cid_str must be a string, got {type(cid_str).__name__}")
+        cid_str = _to_cid_str(cid)
         pin_type = "recursive" if recursive else "direct"
         self.pin_store.add_pin(cid_str, pin_type)
 
-    async def remove_pin(self, cid_str: str) -> None:
+    async def remove_pin(self, cid: Any) -> None:
+        """Unpin a CID. *cid* may be a string or IPLDNode."""
         self._ensure_started()
-        if not isinstance(cid_str, str):
-            raise TypeError(f"cid_str must be a string, got {type(cid_str).__name__}")
-        self.pin_store.remove_pin(cid_str)
+        self.pin_store.remove_pin(_to_cid_str(cid))
 
     async def list_pins(self, type_filter: str = "all") -> dict[str, str]:
         """List pins by type. type_filter can be 'direct', 'recursive', 'indirect', or 'all'."""
@@ -1130,29 +1314,47 @@ class Peer:
 
         return self.host.id().to_base58()  # type: ignore[union-attr]
 
-    async def export_car(self, cid_str: str, output_path: str) -> None:
+    async def export_car(self, cid: Any, output_path: str) -> None:
+        """Export a DAG to a CAR file. *cid* may be a string or IPLDNode."""
         self._ensure_started()
-        if not isinstance(cid_str, str):
-            raise TypeError(f"cid_str must be a string, got {type(cid_str).__name__}")
         from py_ipfs_lite.car import export_car as _export_car
 
-        await _export_car(self, cid_str, output_path)
+        await _export_car(self, _to_cid_str(cid), output_path)
 
     async def import_car(self, input_path: str, strict: bool = False) -> list[str]:
+        """Import a CAR file. Returns a list of root CID strings."""
         self._ensure_started()
         from py_ipfs_lite.car import import_car as _import_car
 
         return await _import_car(self, input_path, strict=strict)
 
-    def session(self) -> Any:
-        return self
+    def session(self) -> PeerSession:
+        """Return a session-based NodeGetter with its own BitswapSession.
 
-    async def has_block(self, cid_str: str) -> bool:
+        Each call creates a fresh BitswapSession that shares block request
+        state internally, enabling efficient deduplication of concurrent
+        WANT messages for the same CID within the session scope.
+        """
+        return PeerSession(self._exchange)
+
+    async def has_block(self, cid: Any) -> bool:
+        """Check whether a block is available locally.
+
+        Accepts a CID string, a ``CIDObject``, an ``IPLDNode``, or any
+        object with a ``cid_bytes`` attribute.
+        """
         self._ensure_started()
-        if not isinstance(cid_str, str):
-            raise TypeError(f"cid_str must be a string, got {type(cid_str).__name__}")
-        cid = parse_cid(cid_str)
-        return await self.blockstore.has(cid.buffer)  # type: ignore[union-attr]
+        if isinstance(cid, str):
+            parsed = parse_cid(cid)
+            return await self.blockstore.has(cid_to_bytes(parsed))  # type: ignore[union-attr]
+        if isinstance(cid, IPLDNode):
+            return await self.blockstore.has(cid.cid_bytes)  # type: ignore[union-attr]
+        if hasattr(cid, "cid_bytes"):
+            return await self.blockstore.has(cid.cid_bytes)  # type: ignore[union-attr]
+        if hasattr(cid, "buffer"):
+            return await self.blockstore.has(cid.buffer)  # type: ignore[union-attr]
+        cid_bytes = cid_to_bytes(cid) if not isinstance(cid, bytes) else cid
+        return await self.blockstore.has(cid_bytes)  # type: ignore[union-attr]
 
     def block_store(self) -> Any:
         return self.blockstore

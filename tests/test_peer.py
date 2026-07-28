@@ -21,7 +21,7 @@ async def test_peer_rejects_bytes_cid(memory_config):
     peer = Peer(memory_config, listen_addrs=["/ip4/127.0.0.1/tcp/0"])
     await peer.start()
     try:
-        with pytest.raises(TypeError, match="cid_str must be a string"):
+        with pytest.raises(ValueError, match="Invalid CID string"):
             await peer.get_node(
                 b"bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi"
             )
@@ -68,7 +68,7 @@ async def test_add_get_remove_node(memory_config):
     await peer.remove_node(cid_str)
     from libp2p.bitswap.cid import parse_cid
 
-    assert not await peer.blockstore.has(parse_cid(cid_str).buffer)
+    assert not await peer.blockstore.has(parse_cid(str(cid_str)).buffer)
 
     await peer.close()
 
@@ -116,8 +116,8 @@ async def test_pin_and_gc(memory_config):
     # cid1 should exist, cid2 should be gone
     from libp2p.bitswap.cid import parse_cid
 
-    assert await peer.blockstore.has(parse_cid(cid1).buffer)
-    assert not await peer.blockstore.has(parse_cid(cid2).buffer)
+    assert await peer.blockstore.has(parse_cid(str(cid1)).buffer)
+    assert not await peer.blockstore.has(parse_cid(str(cid2)).buffer)
 
     await peer.close()
 
@@ -244,7 +244,7 @@ async def test_api_parity_methods():
 
 
 def test_peer_accessors(memory_config):
-    from py_ipfs_lite.peer import Peer
+    from py_ipfs_lite.peer import Peer, PeerSession
 
     peer = Peer(memory_config, listen_addrs=["/ip4/127.0.0.1/tcp/0"])
 
@@ -253,7 +253,8 @@ def test_peer_accessors(memory_config):
     peer._exchange = "dummy_exchange"
 
     # Test accessors
-    assert peer.session() == peer
+    session = peer.session()
+    assert isinstance(session, PeerSession)
     assert peer.block_store() is not None
     assert peer.exchange() == "dummy_exchange"
 

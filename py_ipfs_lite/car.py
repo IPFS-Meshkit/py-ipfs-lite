@@ -13,7 +13,7 @@ from libp2p.bitswap.cid import (
 )
 from libp2p.bitswap.dag import decode_dag_pb
 
-from py_ipfs_lite.dag_utils import decode_node
+from py_ipfs_lite.peer import decode_node
 
 
 async def _read_exactly(f: Any, n: int) -> bytes:

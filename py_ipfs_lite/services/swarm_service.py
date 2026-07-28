@@ -11,7 +11,7 @@ from py_ipfs_lite.peer import Peer
 @dataclass
 class SwarmPeers:
     count: int
-    peers: list[str]
+    peers: list[dict]
 
 
 async def list_connected_peers(peer: Peer) -> SwarmPeers:
@@ -21,8 +21,14 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
 
     raw_host = typing.cast(typing.Any, getattr(peer.host, "_host", peer.host))
     network = raw_host.get_network()
-    peers = [p.to_base58() for p in network.connections.keys()]
-    return SwarmPeers(count=len(peers), peers=peers)
+    result = []
+    for peer_id, conns in network.connections.items():
+        pid_str = peer_id.to_base58()
+        result.append({
+            "peer": pid_str,
+            "addrs": [],
+        })
+    return SwarmPeers(count=len(result), peers=result)
 
 
 async def count_connections(peer: Peer) -> int:

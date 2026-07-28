@@ -35,8 +35,8 @@ async def add_file_from_stream(
                 if max_size is not None and size > max_size:
                     raise PayloadTooLargeError(f"upload exceeded {max_size} bytes")
                 f.write(chunk)
-        cid_str = await peer.add_file(path)
-        return AddFileResult(name=filename, cid=cid_str, size=size)
+        node = await peer.add_file(path)
+        return AddFileResult(name=filename, cid=str(node), size=size)
     finally:
         os.remove(path)
 
