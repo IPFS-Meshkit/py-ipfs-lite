@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from py_ipfs_lite.exceptions import BlockNotFoundError, InvalidCidError
-from py_ipfs_lite.peer import Peer, parse_cid
+from py_ipfs_lite.peer import Peer, cid_to_bytes, parse_cid
 
 
 @dataclass
@@ -19,7 +19,7 @@ async def stat_block(peer: Peer, cid_str: str) -> BlockStat:
     except ValueError as e:
         raise InvalidCidError(str(e)) from e
 
-    data = await peer.blockstore.get(cid)
+    data = await peer.blockstore.get(cid_to_bytes(cid))
     if data is None:
         raise BlockNotFoundError(cid_str)
     return BlockStat(key=cid_str, size=len(data))
@@ -38,7 +38,7 @@ async def get_block(peer: Peer, cid_str: str) -> bytes:
     except ValueError as e:
         raise InvalidCidError(str(e)) from e
 
-    data = await peer.blockstore.get(cid)
+    data = await peer.blockstore.get(cid_to_bytes(cid))
     if data is None:
         raise BlockNotFoundError(cid_str)
     return data

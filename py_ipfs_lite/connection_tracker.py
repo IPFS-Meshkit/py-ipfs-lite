@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 from typing import Dict, Optional
+
+from libp2p.abc import INetConn, INetStream, INetwork, INotifee
 from pydantic import BaseModel
-from libp2p.abc import INotifee, INetwork, INetStream, INetConn
 
 
 class PeerConnectionStats(BaseModel):
@@ -51,6 +52,8 @@ class ConnectionStatsTracker(INotifee):
                 peer_id = str(getattr(conn, "peer_id", "unknown"))
             except Exception:
                 return
+        if peer_id == "unknown":
+            return
         now_str = self._now()
 
         security_type = "unknown"
@@ -75,7 +78,7 @@ class ConnectionStatsTracker(INotifee):
                                     security_type = "tls"
                                 elif type(sec_conn.conn).__name__ == "NoiseTransportReadWriter":
                                     security_type = "Noise"
-                        
+
                         # Unwrap transport
                         curr = sec_conn
                         for _ in range(10):
@@ -123,6 +126,8 @@ class ConnectionStatsTracker(INotifee):
                 peer_id = str(getattr(conn, "peer_id", "unknown"))
             except Exception:
                 return
+        if peer_id == "unknown":
+            return
         now_str = self._now()
 
         if peer_id in self.stats:

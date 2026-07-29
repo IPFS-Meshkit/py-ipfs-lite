@@ -12,6 +12,7 @@ from libp2p import new_host
 from multiaddr import Multiaddr
 
 from py_ipfs_lite.config import AddParams, Config
+from py_ipfs_lite.connection_tracker import ConnectionStatsTracker
 from py_ipfs_lite.exceptions import BlockNotFoundError, PeerNotStartedError
 from py_ipfs_lite.metrics import (
     IPFS_BITSWAP_BYTES_RECEIVED_TOTAL,
@@ -19,8 +20,6 @@ from py_ipfs_lite.metrics import (
     IPFS_GC_RUNS_TOTAL,
     MetricsBlockStore,
 )
-
-from py_ipfs_lite.connection_tracker import ConnectionStatsTracker
 
 
 @dataclass
@@ -45,12 +44,10 @@ from libp2p.bitswap.dag import MerkleDag, decode_dag_pb
 from libp2p.crypto.ed25519 import create_new_key_pair
 from libp2p.crypto.keys import KeyPair
 from libp2p.crypto.x25519 import create_new_key_pair as create_new_x25519_key_pair
-
 from libp2p.discovery.bootstrap.bootstrap import BootstrapDiscovery
 from libp2p.kad_dht.kad_dht import DHTMode, KadDHT
 from libp2p.peer.peerinfo import info_from_p2p_addr
 from libp2p.security.noise.transport import Transport as NoiseTransport
-from libp2p.security.tls.transport import TLSTransport
 
 
 def _check_nan(node: Any) -> None:
@@ -425,8 +422,8 @@ class Peer:
         return peer
 
     async def _create_host(self) -> Any:
-        from libp2p.transport.quic.config import QUICTransportConfig
         from libp2p.rcmgr.manager import ResourceLimits, new_resource_manager
+        from libp2p.transport.quic.config import QUICTransportConfig
 
         maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs]
         noise_key_pair = create_new_x25519_key_pair()
@@ -785,11 +782,15 @@ class Peer:
                 if self.routing and hasattr(self.routing, "close"):
                     await self.routing.close()
         finally:
-            await self._exit_stack.aclose()
+            try:
+                await self._exit_stack.aclose()
+            except Exception as e:
+                logger.debug(f"Deferred nursery exception during close: {e}")
             self._state = PeerState.STOPPED
 
     async def bootstrap(self, peers: list[str] | list[Any]) -> None:
-        """Connect to bootstrap peers and join the DHT network.
+        """
+        Connect to bootstrap peers and join the DHT network.
 
         Accepts either multiaddr strings or peer.AddrInfo-like objects with
         ``id`` and ``addrs`` attributes.
@@ -806,7 +807,6 @@ class Peer:
         the caller indefinitely even if peers are slow to respond.
         """
         self._ensure_started()
-        from libp2p.peer.peerinfo import PeerInfo
 
         str_addrs: list[str] = []
         for p in peers:
@@ -851,7 +851,8 @@ class Peer:
         timeout: float | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> IPLDNode:
-        """Add a file to the DAGService. Returns an IPLDNode with the root CID.
+        """
+        Add a file to the DAGService. Returns an IPLDNode with the root CID.
 
         Accepts a filesystem path, raw bytes, or a readable binary stream.
         The returned IPLDNode supports ``str(node)`` for backward compatibility
@@ -922,7 +923,8 @@ class Peer:
         timeout: float | None = None,
         stream: bool = False,
     ) -> bytes | SeekableReader | AsyncIterator[bytes] | None:
-        """Fetch a file by its CID.
+        """
+        Fetch a file by its CID.
 
         *cid* may be a CID string or an IPLDNode.
 
@@ -932,6 +934,7 @@ class Peer:
             - ``bytes``: when *stream=False* (legacy default, buffers everything).
             - ``AsyncIterator[bytes]``: when *stream=True*, yields chunks.
             - ``None``: when *output_path* is set (written to disk).
+
         """
         self._ensure_started()
         cid_str = _to_cid_str(cid)
@@ -1045,7 +1048,8 @@ class Peer:
         timeout: float | None = None,
         params: AddParams | None = None,
     ) -> IPLDNode:
-        """Store an IPLD node in the blockstore and return it as an IPLDNode.
+        """
+        Store an IPLD node in the blockstore and return it as an IPLDNode.
 
         The returned IPLDNode supports ``str(node)`` returning the CID string
         for backward compatibility.
@@ -1329,7 +1333,8 @@ class Peer:
         return await _import_car(self, input_path, strict=strict)
 
     def session(self) -> PeerSession:
-        """Return a session-based NodeGetter with its own BitswapSession.
+        """
+        Return a session-based NodeGetter with its own BitswapSession.
 
         Each call creates a fresh BitswapSession that shares block request
         state internally, enabling efficient deduplication of concurrent
@@ -1338,7 +1343,8 @@ class Peer:
         return PeerSession(self._exchange)
 
     async def has_block(self, cid: Any) -> bool:
-        """Check whether a block is available locally.
+        """
+        Check whether a block is available locally.
 
         Accepts a CID string, a ``CIDObject``, an ``IPLDNode``, or any
         object with a ``cid_bytes`` attribute.

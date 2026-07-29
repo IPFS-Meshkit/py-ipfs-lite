@@ -79,7 +79,7 @@ app = FastAPI(title="py-ipfs-lite HTTP API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -104,7 +104,7 @@ async def ipfs_lite_exception_handler(request: Request, exc: IPFSLiteError) -> A
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception) -> Any:
     logger.error(f"Internal server error: {exc}")
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.post("/api/v0/add")
@@ -114,11 +114,15 @@ async def add_file(request: Request, file: UploadFile = File(...)) -> Any:
 
     if not hasattr(file, "read"):
         raise HTTPException(status_code=400, detail="Missing or invalid file")
-    body = await file.read()
+
+    chunk_size = 1024 * 1024  # 1 MB chunks
 
     async def chunks() -> AsyncGenerator[bytes, None]:
-        if body:
-            yield body
+        while True:
+            data = await file.read(chunk_size)
+            if not data:
+                break
+            yield data
 
     from py_ipfs_lite.services import files_service
 

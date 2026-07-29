@@ -72,7 +72,7 @@ async def test_api_swarm_peers_error_handling(client):
     try:
         res = await client.post("/api/v0/swarm/peers")
         assert res.status_code == 500
-        assert "mock error" in res.text
+        assert "Internal server error" in res.text
     finally:
         del type(network).connections
 

@@ -28,7 +28,7 @@ def _get_key_pair(seed: str | None, config: Config | None = None) -> Any:
     if seed is None:
         # 2. Check Environment Variable (for .env / docker compat)
         seed = os.environ.get("IPFS_LITE_SEED")
-        logger.info(f"Using seed from environment variable: {seed}")
+        logger.info("Using seed from environment variable")
 
     # 3. Check persistent file in the data directory
     if seed is None and config and config.blockstore_path:
@@ -244,7 +244,7 @@ def main() -> None:
         # (WebRTC, WebTransport) — these are expected, not errors
         logging.getLogger("libp2p.transport.manager").setLevel(logging.ERROR)
         logging.getLogger("libp2p.network.swarm").setLevel(logging.INFO)
-    
+
     # Enable propagation for libp2p since py-libp2p disables it by default
     logging.getLogger("libp2p").propagate = True
     logging.getLogger("libp2p").setLevel(logging.INFO)

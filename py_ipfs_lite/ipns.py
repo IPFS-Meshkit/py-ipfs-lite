@@ -53,8 +53,8 @@ def create_ipns_record(
     data_to_sign = SIGNATURE_PREFIX + cbor_bytes
     signature_v2 = private_key.sign(data_to_sign)
 
-    # Sign V1 (legacy)
-    data_v1 = value_bytes + validity_bytes + b"0"
+    # Sign V1 (legacy) — use null byte (0x00) for validityType, matching go-ipfs
+    data_v1 = value_bytes + validity_bytes + bytes([0])
     signature_v1 = private_key.sign(data_v1)
 
     entry = IpnsEntry()
@@ -115,7 +115,7 @@ def validate_ipns_record(record_bytes: bytes, expected_peer_id: ID) -> IpnsEntry
             raise RoutingError("IPNS record pubKey does not match the expected Peer ID")
 
     # 2. Check Signature
-    if entry.signatureV2 and entry.data:
+    if entry.signatureV2 and entry.data is not None and len(entry.data) > 0:
         data_to_sign = SIGNATURE_PREFIX + entry.data
         if not pubkey.verify(data_to_sign, entry.signatureV2):
             raise RoutingError("IPNS V2 signature is invalid")
@@ -144,7 +144,7 @@ def validate_ipns_record(record_bytes: bytes, expected_peer_id: ID) -> IpnsEntry
 
     elif entry.signatureV1:
         data_to_sign = (
-            entry.value + entry.validity + str(entry.validityType).encode("utf-8")
+            entry.value + entry.validity + bytes([entry.validityType])
         )
         if not pubkey.verify(data_to_sign, entry.signatureV1):
             raise RoutingError("IPNS V1 signature is invalid")
@@ -165,7 +165,7 @@ def validate_ipns_record(record_bytes: bytes, expected_peer_id: ID) -> IpnsEntry
             tz = "-" + tz
         else:
             frac = frac_tz
-            tz = ""
+            tz = "+00:00"
         frac = frac[:6]
         validity_str = f"{base}.{frac}{tz}"
 

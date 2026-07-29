@@ -83,8 +83,9 @@ class MetricsBlockStore:
         await self._store.delete_block(cid)
 
         try:
-            IPFS_BLOCKSTORE_BLOCKS_TOTAL.dec()
-            if size > 0:
+            if IPFS_BLOCKSTORE_BLOCKS_TOTAL._value.get() > 0:
+                IPFS_BLOCKSTORE_BLOCKS_TOTAL.dec()
+            if size > 0 and IPFS_BLOCKSTORE_SIZE_BYTES._value.get() >= size:
                 IPFS_BLOCKSTORE_SIZE_BYTES.dec(size)
         except Exception:
             pass

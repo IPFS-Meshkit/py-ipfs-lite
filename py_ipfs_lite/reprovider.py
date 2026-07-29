@@ -20,7 +20,10 @@ class Reprovider:
         self._cancel_scope = trio.CancelScope()
         with self._cancel_scope:
             while True:
-                await self.reprovide()
+                try:
+                    await self.reprovide()
+                except Exception as e:
+                    logger.warning(f"Reprovider iteration failed: {e}")
                 await trio.sleep(self.interval)
 
     async def stop(self) -> None:
