@@ -22,8 +22,8 @@ WORKDIR /app
 # Install uv
 RUN pip install uv
 
-# Bust Docker cache when py-libp2p audit-stability-improvements branch is updated
-ADD https://api.github.com/repos/sumanjeet0012/py-libp2p/git/refs/heads/audit-stability-improvements /tmp/libp2p_version.json
+# Bust Docker cache when py-libp2p fix/dht-provide-improvements branch is updated
+ADD https://api.github.com/repos/sumanjeet0012/py-libp2p/git/refs/heads/fix/dht-provide-improvements /tmp/libp2p_version.json
 
 # Copy project files
 COPY . .
