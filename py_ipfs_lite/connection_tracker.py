@@ -239,6 +239,13 @@ class ConnectionStatsTracker(INotifee):
         now = time.monotonic()
 
         for key, record in list(self.streams.items()):
+            # Refresh protocol/direction lazily: protocol negotiation and
+            # direction tagging happen after the opened_stream notifee fires.
+            if record.protocol is None:
+                record.protocol = _stream_protocol(record.stream_ref)
+            if record.direction == "unknown":
+                record.direction = _stream_direction(record.stream_ref)
+
             # Reconcile streams closed without a notifee event
             try:
                 closed = bool(record.stream_ref.is_closed)
@@ -299,6 +306,13 @@ class ConnectionStatsTracker(INotifee):
 
     def stream_stats_snapshot(self) -> dict[str, Any]:
         """JSON-ready global + per-peer stream statistics."""
+        # Refresh protocol/direction so the report reflects negotiated values.
+        for record in self.streams.values():
+            if record.protocol is None:
+                record.protocol = _stream_protocol(record.stream_ref)
+            if record.direction == "unknown":
+                record.direction = _stream_direction(record.stream_ref)
+
         open_streams = [
             {
                 "peer_id": r.peer_id,
