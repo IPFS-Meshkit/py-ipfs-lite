@@ -1074,7 +1074,7 @@ wheels = [
 [[package]]
 name = "libp2p"
 version = "0.7.0"
-source = { git = "https://github.com/sumanjeet0012/py-libp2p.git?rev=audit-stability-improvements#3a79b343d19d5e0da3bf2a0a82322e44af9b059e" }
+source = { git = "https://github.com/sumanjeet0012/py-libp2p.git?rev=fix%2Fdht-provide-improvements#04b483fe91e9a913482a1a3e73fb7077e984c387" }
 dependencies = [
     { name = "aioquic" },
     { name = "anyio" },
@@ -2049,7 +2049,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.137.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "hypercorn", specifier = ">=0.18.0" },
-    { name = "libp2p", git = "https://github.com/sumanjeet0012/py-libp2p.git?rev=audit-stability-improvements" },
+    { name = "libp2p", git = "https://github.com/sumanjeet0012/py-libp2p.git?rev=fix%2Fdht-provide-improvements" },
     { name = "mdformat", marker = "extra == 'dev'", specifier = ">=0.7.22" },
     { name = "mdformat-gfm", marker = "extra == 'dev'" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.0.0" },
