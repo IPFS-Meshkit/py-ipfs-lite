@@ -33,6 +33,18 @@ IPFS_GC_RECLAIMED_BLOCKS_TOTAL = Counter(
 
 IPFS_SWARM_PEERS = Gauge("ipfs_swarm_peers", "Number of connected swarm peers")
 
+IPFS_STREAMS_OPENED_TOTAL = Counter(
+    "ipfs_streams_opened_total", "Total number of network streams opened"
+)
+
+IPFS_STREAMS_CLOSED_TOTAL = Counter(
+    "ipfs_streams_closed_total", "Total number of network streams closed"
+)
+
+IPFS_STREAMS_LEAKED_TOTAL = Counter(
+    "ipfs_streams_leaked_total", "Total number of suspected leaked streams detected"
+)
+
 
 class MetricsBlockStore:
     """Wraps a libp2p BlockStore to record prometheus metrics on put/delete."""

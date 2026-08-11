@@ -705,6 +705,11 @@ class Peer:
             # Keep connections alive by sending periodic pings (fixes 25-30s idle disconnects)
             self._nursery.start_soon(self._keep_alive_loop)
 
+            # Resource-leak monitoring: periodically sweep open streams and
+            # flag any that have outlived the configured threshold.
+            if self.config.stream_monitor_enabled:
+                self._nursery.start_soon(self._stream_leak_monitor_loop)
+
             self._state = PeerState.RUNNING
         except Exception:
             await self.close()
@@ -741,6 +746,43 @@ class Peer:
                     self._nursery.start_soon(_ping_with_sem, peer_id)
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
+
+    async def _stream_leak_monitor_loop(self) -> None:
+        """
+        Periodically sweep open streams and log/flag suspected leaks.
+
+        Uses the connection tracker's ``check_for_leaks`` which both
+        reconciles streams closed without a notifee event and flags streams
+        open longer than ``stream_leak_threshold_seconds``.
+        """
+        if self.connection_tracker is None:
+            return
+
+        interval = max(1.0, self.config.stream_monitor_interval_seconds)
+        threshold = max(1.0, self.config.stream_leak_threshold_seconds)
+        logger.info(
+            "Stream leak monitor started: sweep every %.0fs, leak threshold %.0fs",
+            interval,
+            threshold,
+        )
+
+        while True:
+            await trio.sleep(interval)
+            try:
+                leaked = self.connection_tracker.check_for_leaks(threshold)
+                if leaked:
+                    logger.warning(
+                        "Resource-leak sweep: %d stream(s) flagged for peer(s) %s",
+                        len(leaked),
+                        sorted({r.peer_id for r in leaked}),
+                    )
+                elif logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "Resource-leak sweep: no leaks (open streams: %d)",
+                        len(self.connection_tracker.streams),
+                    )
+            except Exception as e:
+                logger.debug(f"Stream leak monitor error: {e}")
 
     async def _ping_peer(self, peer_id: Any) -> None:
         # Create a fresh PingService for every call so that PingService's

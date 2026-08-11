@@ -257,6 +257,24 @@ async def swarm_connection_stats(request: Request) -> Any:
     return JSONResponse(content={"Stats": stats})
 
 
+@app.post("/api/v0/swarm/stream_stats")
+@app.get("/api/v0/swarm/stream_stats")
+async def swarm_stream_stats(request: Request) -> Any:
+    """
+    Report stream lifecycle statistics for resource-leak monitoring.
+
+    Returns per-peer open/closed stream counts, current open streams, and
+    the average stream lifetime. Streams are flagged as suspected leaks by
+    the background monitor when they outlive the configured threshold.
+    """
+    peer: Peer = request.app.state.peer
+    if not hasattr(peer, "connection_tracker") or peer.connection_tracker is None:
+        raise HTTPException(
+            status_code=503, detail="Connection tracker not initialized"
+        )
+    return JSONResponse(content=peer.connection_tracker.stream_stats_snapshot())
+
+
 @app.post("/api/v0/block/stat")
 async def block_stat(
     request: Request,

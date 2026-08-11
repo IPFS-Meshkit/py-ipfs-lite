@@ -28,6 +28,13 @@ class Config:
     bitswap_batch_fetch: bool = False
     # mDNS peer discovery
     enable_mdns: bool = False
+    # Resource-leak monitoring: streams open longer than this many seconds
+    # are flagged as suspected leaks by the periodic sweep.
+    stream_leak_threshold_seconds: float = 300.0
+    # How often the stream leak monitor sweeps (seconds).
+    stream_monitor_interval_seconds: float = 60.0
+    # Set to False to disable the background leak monitor loop entirely.
+    stream_monitor_enabled: bool = True
 
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:
