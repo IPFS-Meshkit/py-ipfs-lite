@@ -26,6 +26,8 @@ class Config:
     bitswap_max_providers: int = 10
     bitswap_provider_cache_ttl: float = 300.0
     bitswap_batch_fetch: bool = False
+    # mDNS peer discovery
+    enable_mdns: bool = False
 
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:
@@ -76,14 +78,19 @@ class AddParams:
             raise ValueError(
                 f"Invalid layout '{self.layout}'. Must be 'balanced' or 'trickle'."
             )
-        if self.hash_fun not in ("sha2-256", "sha2-512", "sha3-256", "sha3-512", "blake2b-256"):
+        if self.hash_fun not in (
+            "sha2-256",
+            "sha2-512",
+            "sha3-256",
+            "sha3-512",
+            "blake2b-256",
+        ):
             raise ValueError(
-                f"Invalid hash_fun '{self.hash_fun}'. Must be a supported multihash function."
+                f"Invalid hash_fun '{self.hash_fun}'. "
+                "Must be a supported multihash function."
             )
         if self.max_links < 1:
-            raise ValueError(
-                f"Invalid max_links '{self.max_links}'. Must be >= 1."
-            )
+            raise ValueError(f"Invalid max_links '{self.max_links}'. Must be >= 1.")
 
 
 @dataclass(slots=True)

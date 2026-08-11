@@ -4,6 +4,7 @@ When those internals shift (as they have before), this is the one place to fix.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from py_ipfs_lite.peer import Peer
 
@@ -11,7 +12,7 @@ from py_ipfs_lite.peer import Peer
 @dataclass
 class SwarmPeers:
     count: int
-    peers: list[dict]
+    peers: list[dict[str, Any]]
 
 
 async def list_connected_peers(peer: Peer) -> SwarmPeers:
@@ -24,10 +25,12 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
     result = []
     for peer_id, conns in network.connections.items():
         pid_str = peer_id.to_base58()
-        result.append({
-            "peer": pid_str,
-            "addrs": [],
-        })
+        result.append(
+            {
+                "peer": pid_str,
+                "addrs": [],
+            }
+        )
     return SwarmPeers(count=len(result), peers=result)
 
 
@@ -67,6 +70,7 @@ async def list_routing_table_peers(peer: Peer) -> SwarmPeers:
 
 async def connect_peer(peer: Peer, addr: str) -> None:
     from py_ipfs_lite.exceptions import PeerNotStartedError
+
     if not peer.host:
         raise PeerNotStartedError("Peer is not initialized")
     from libp2p.peer.peerinfo import info_from_p2p_addr
@@ -79,6 +83,7 @@ async def connect_peer(peer: Peer, addr: str) -> None:
 
 async def disconnect_peer(peer: Peer, peer_id_str: str) -> None:
     from py_ipfs_lite.exceptions import PeerNotStartedError
+
     if not peer.host:
         raise PeerNotStartedError("Peer is not initialized")
     from libp2p.peer.id import ID

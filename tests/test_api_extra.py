@@ -28,7 +28,9 @@ async def client(memory_config):
 async def test_api_add_and_cat(client):
     # Test /api/v0/add
     data = b"hello ipfs api!"
-    res = await client.post("/api/v0/add", files={"file": ("hello.txt", data, "application/octet-stream")})
+    res = await client.post(
+        "/api/v0/add", files={"file": ("hello.txt", data, "application/octet-stream")}
+    )
     assert res.status_code == 200, res.text
     cid = res.json()["Hash"]
     assert cid is not None
@@ -43,7 +45,11 @@ async def test_api_add_and_cat(client):
 async def test_api_dag_put_and_get(client):
     # Test /api/v0/dag/put
     json_data = b'{"hello": "world"}'
-    res = await client.post("/api/v0/dag/put?store-codec=dag-json", content=json_data, headers={"content-type": "application/json"})
+    res = await client.post(
+        "/api/v0/dag/put?store-codec=dag-json",
+        content=json_data,
+        headers={"content-type": "application/json"},
+    )
     assert res.status_code == 200, res.text
     cid = res.json()["Cid"]["/"]
     assert cid is not None
@@ -58,7 +64,9 @@ async def test_api_dag_put_and_get(client):
 async def test_api_pin_add_and_rm(client):
     # Add a block to pin
     data = b"pin me!"
-    res = await client.post("/api/v0/add", files={"file": ("pin.txt", data, "application/octet-stream")})
+    res = await client.post(
+        "/api/v0/add", files={"file": ("pin.txt", data, "application/octet-stream")}
+    )
     assert res.status_code == 200, res.text
     cid = res.json()["Hash"]
 

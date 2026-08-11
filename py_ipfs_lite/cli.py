@@ -234,7 +234,9 @@ def main() -> None:
         logging.getLogger("libp2p.transport.quic.listener").setLevel(logging.DEBUG)
         logging.getLogger("libp2p.transport.tcp.tcp").setLevel(logging.DEBUG)
         logging.getLogger("libp2p.transport.cmux").setLevel(logging.DEBUG)
-        logging.getLogger("libp2p.security.security_multistream").setLevel(logging.DEBUG)
+        logging.getLogger("libp2p.security.security_multistream").setLevel(
+            logging.DEBUG
+        )
         logging.getLogger("libp2p.protocol_muxer.multiselect").setLevel(logging.DEBUG)
         logging.getLogger("libp2p.transport.manager").setLevel(logging.DEBUG)
         logging.getLogger("libp2p.network.swarm").setLevel(logging.DEBUG)

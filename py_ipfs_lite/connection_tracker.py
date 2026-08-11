@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
-from typing import Dict, Optional
 
 from libp2p.abc import INetConn, INetStream, INetwork, INotifee
+from multiaddr import Multiaddr
 from pydantic import BaseModel
 
 
@@ -9,22 +9,22 @@ class PeerConnectionStats(BaseModel):
     peer_id: str
     total_connections: int = 0
     current_connections: int = 0
-    first_connected_at: Optional[str] = None
-    last_connected_at: Optional[str] = None
-    last_disconnected_at: Optional[str] = None
-    security: Optional[str] = None
-    muxer: Optional[str] = None
-    transport: Optional[str] = None
+    first_connected_at: str | None = None
+    last_connected_at: str | None = None
+    last_disconnected_at: str | None = None
+    security: str | None = None
+    muxer: str | None = None
+    transport: str | None = None
     identify_completed: bool = False
-    identify_completed_at: Optional[str] = None
+    identify_completed_at: str | None = None
     ping_completed: bool = False
-    first_ping_at: Optional[str] = None
-    last_ping_at: Optional[str] = None
+    first_ping_at: str | None = None
+    last_ping_at: str | None = None
 
 
 class ConnectionStatsTracker(INotifee):
     def __init__(self) -> None:
-        self.stats: Dict[str, PeerConnectionStats] = {}
+        self.stats: dict[str, PeerConnectionStats] = {}
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -76,26 +76,57 @@ class ConnectionStatsTracker(INotifee):
                             if hasattr(sec_conn, "conn"):
                                 if type(sec_conn.conn).__name__ == "TLSReadWriter":
                                     security_type = "tls"
-                                elif type(sec_conn.conn).__name__ == "NoiseTransportReadWriter":
+                                elif (
+                                    type(sec_conn.conn).__name__
+                                    == "NoiseTransportReadWriter"
+                                ):
                                     security_type = "Noise"
 
                         # Unwrap transport
                         curr = sec_conn
                         for _ in range(10):
-                            if hasattr(curr, "conn") and curr.conn is not None and type(curr.conn).__name__ != type(curr).__name__:
+                            if (
+                                hasattr(curr, "conn")
+                                and curr.conn is not None
+                                and type(curr.conn).__name__ != type(curr).__name__
+                            ):
                                 curr = curr.conn
-                            elif hasattr(curr, "raw_conn") and curr.raw_conn is not None and type(curr.raw_conn).__name__ != type(curr).__name__:
+                            elif (
+                                hasattr(curr, "raw_conn")
+                                and curr.raw_conn is not None
+                                and type(curr.raw_conn).__name__ != type(curr).__name__
+                            ):
                                 curr = curr.raw_conn
-                            elif hasattr(curr, "transport_conn") and curr.transport_conn is not None and type(curr.transport_conn).__name__ != type(curr).__name__:
+                            elif (
+                                hasattr(curr, "transport_conn")
+                                and curr.transport_conn is not None
+                                and type(curr.transport_conn).__name__
+                                != type(curr).__name__
+                            ):
                                 curr = curr.transport_conn
-                            elif hasattr(curr, "read_writer") and curr.read_writer is not None and type(curr.read_writer).__name__ != type(curr).__name__:
+                            elif (
+                                hasattr(curr, "read_writer")
+                                and curr.read_writer is not None
+                                and type(curr.read_writer).__name__
+                                != type(curr).__name__
+                            ):
                                 curr = curr.read_writer
-                            elif hasattr(curr, "read_write_closer") and curr.read_write_closer is not None and type(curr.read_write_closer).__name__ != type(curr).__name__:
+                            elif (
+                                hasattr(curr, "read_write_closer")
+                                and curr.read_write_closer is not None
+                                and type(curr.read_write_closer).__name__
+                                != type(curr).__name__
+                            ):
                                 curr = curr.read_write_closer
                             else:
                                 break
                         transport_type = type(curr).__name__
-                        if transport_type in ("TCPConnection", "RawConnection", "TLSReadWriter", "NoiseTransportReadWriter"):
+                        if transport_type in (
+                            "TCPConnection",
+                            "RawConnection",
+                            "TLSReadWriter",
+                            "NoiseTransportReadWriter",
+                        ):
                             transport_type = "tcp"
         except Exception:
             pass

@@ -12,6 +12,7 @@ class BlockStat:
 
 async def stat_block(peer: Peer, cid_str: str) -> BlockStat:
     from py_ipfs_lite.exceptions import PeerNotStartedError
+
     if not peer.blockstore:
         raise PeerNotStartedError("Blockstore is not initialized")
     try:
@@ -31,6 +32,7 @@ async def remove_block(peer: Peer, cid_str: str) -> None:
 
 async def get_block(peer: Peer, cid_str: str) -> bytes:
     from py_ipfs_lite.exceptions import PeerNotStartedError
+
     if not peer.blockstore:
         raise PeerNotStartedError("Blockstore is not initialized")
     try:
@@ -48,6 +50,7 @@ async def put_block(peer: Peer, data: bytes) -> str:
     from libp2p.bitswap.cid import compute_cid_v1, format_cid_for_display
 
     from py_ipfs_lite.exceptions import PeerNotStartedError
+
     if not peer.blockstore:
         raise PeerNotStartedError("Blockstore is not initialized")
 

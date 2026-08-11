@@ -412,6 +412,7 @@ async def test_fetch_local_block_with_affinity(memory_config):
     async with Peer(memory_config, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer1:
         async with Peer(memory_config, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer2:
             from libp2p.peer.peerinfo import info_from_p2p_addr
+
             # Connect them
             peer1_addr = peer1.host.addrs()[0]
             await peer2.host.connect(info_from_p2p_addr(peer1_addr))
@@ -470,6 +471,7 @@ async def test_fetch_local_block_with_affinity_batch():
     async with Peer(memory_config1, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer1:
         async with Peer(memory_config2, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer2:
             from libp2p.peer.peerinfo import info_from_p2p_addr
+
             # Connect them
             peer1_addr = peer1.host.addrs()[0]
             await peer2.host.connect(info_from_p2p_addr(peer1_addr))

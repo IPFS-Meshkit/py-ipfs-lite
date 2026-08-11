@@ -164,7 +164,9 @@ async def cat_file(
         async for chunk in stream:
             yield chunk
 
-    return StreamingResponse(_stream_with_first(), media_type="application/octet-stream")
+    return StreamingResponse(
+        _stream_with_first(), media_type="application/octet-stream"
+    )
 
 
 @app.post("/api/v0/dag/put")
@@ -239,6 +241,7 @@ async def swarm_connection_stats(request: Request) -> Any:
     identified_peers = getattr(raw_host, "_identified_peers", {})
 
     from libp2p.peer.id import ID
+
     stats = []
     for s in peer.connection_tracker.stats.values():
         dump = s.model_dump()
@@ -487,7 +490,9 @@ async def name_publish(
     else:
         lifetime_hours = int(lifetime)
 
-    result_name = await naming_service.publish_name(peer, arg, lifetime_hours=lifetime_hours)
+    result_name = await naming_service.publish_name(
+        peer, arg, lifetime_hours=lifetime_hours
+    )
     return JSONResponse(content={"Name": result_name, "Value": arg})
 
 
@@ -525,6 +530,34 @@ async def debug_routing_table(request: Request) -> Any:
 
     res = await swarm_service.list_routing_table_peers(peer)
     return JSONResponse(content={"count": res.count, "peers": res.peers})
+
+
+@app.post("/api/v0/dht/provide")
+async def dht_provide(
+    request: Request,
+    arg: str = Query(..., description="The CID to provide to the DHT"),
+    recursive: bool = Query(False),
+) -> Any:
+    """Announce to the DHT that we are providing the given CID."""
+    peer: Peer = request.app.state.peer
+    if not peer._started:
+        raise HTTPException(status_code=503, detail="Peer not started")
+    if peer.routing is None:
+        raise HTTPException(
+            status_code=503, detail="Routing not available (offline mode)"
+        )
+
+    import trio
+
+    try:
+        with trio.fail_after(30.0):
+            await peer.routing.provide(arg)
+    except trio.TooSlowError:
+        raise HTTPException(status_code=504, detail="DHT provide timed out after 30s")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to provide: {e}")
+
+    return JSONResponse(content={"OK": True})
 
 
 @app.post("/api/v0/swarm/connect")

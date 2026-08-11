@@ -143,9 +143,7 @@ def validate_ipns_record(record_bytes: bytes, expected_peer_id: ID) -> IpnsEntry
             raise RoutingError(f"Failed to parse IPNS V2 CBOR data: {e}")
 
     elif entry.signatureV1:
-        data_to_sign = (
-            entry.value + entry.validity + bytes([entry.validityType])
-        )
+        data_to_sign = entry.value + entry.validity + bytes([entry.validityType])
         if not pubkey.verify(data_to_sign, entry.signatureV1):
             raise RoutingError("IPNS V1 signature is invalid")
     else:

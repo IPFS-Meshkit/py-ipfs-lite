@@ -35,8 +35,14 @@ fetched_*
 # Scratch / Test files in root
 /scratch_*.py
 /test_*.py
-test.car
+/test*.py
+/inspect_conn.py
+/run_peer.py
+*.pid
+*.car
 *.log
+*.json
+.py_ipfs_lite*/
 
 # Misc
 *.txt

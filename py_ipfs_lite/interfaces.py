@@ -16,7 +16,7 @@ class BlockStore(Protocol):
     async def has(self, cid: bytes) -> bool: ...
     async def delete(self, cid: bytes) -> None: ...
     async def get_size(self, cid: bytes) -> int: ...
-    def all_keys(self) -> list[str]: ...
+    async def all_keys(self) -> list[str]: ...
 
 
 class Exchange(Protocol):
@@ -46,9 +46,19 @@ class DagService(Protocol):
     async def get(self, cid: Any) -> Any: ...
     async def remove(self, cid: Any) -> None: ...
     async def get_many(self, cids: list[Any]) -> Any: ...
-    async def add_file(self, file_path: str, chunk_size: int | None = ..., progress_callback: Any = ..., wrap_with_directory: bool = ...) -> Any: ...
-    async def add_bytes(self, data: bytes, chunk_size: int | None = ..., progress_callback: Any = ...) -> Any: ...
-    async def add_stream(self, stream: Any, chunk_size: int | None = ..., progress_callback: Any = ...) -> Any: ...
+    async def add_file(
+        self,
+        file_path: str,
+        chunk_size: int | None = ...,
+        progress_callback: Any = ...,
+        wrap_with_directory: bool = ...,
+    ) -> Any: ...
+    async def add_bytes(
+        self, data: bytes, chunk_size: int | None = ..., progress_callback: Any = ...
+    ) -> Any: ...
+    async def add_stream(
+        self, stream: Any, chunk_size: int | None = ..., progress_callback: Any = ...
+    ) -> Any: ...
 
 
 class Routing(Protocol):
@@ -67,6 +77,7 @@ class Host(Protocol):
     async def open_stream(self, peer_id: Any, protocol_ids: list[str]) -> Any: ...
     def set_stream_handler(self, protocol_id: str, stream_handler: Any) -> None: ...
     async def close(self) -> None: ...
+    def get_network(self) -> Any: ...
 
 
 # Adapters for py-libp2p concrete types
@@ -100,6 +111,51 @@ class HostAdapter:
     # Pass-through for existing usage
     def get_network(self) -> Any:
         return self._host.get_network()
+
+    # ---- Full IHost surface (libp2p.abc.IHost) ------------------------------
+    # These forwards let consumers treat a HostAdapter as a complete IHost
+    # (needed by Pubsub, Bitswap, KadDHT, Ping, Identify, etc.) instead of
+    # reaching through to the private ``_host`` attribute.
+
+    def get_id(self) -> Any:
+        return self._host.get_id()
+
+    def get_addrs(self) -> Any:
+        return self._host.get_addrs()
+
+    def get_transport_addrs(self) -> Any:
+        return self._host.get_transport_addrs()
+
+    def get_peerstore(self) -> Any:
+        return self._host.get_peerstore()
+
+    def get_private_key(self) -> Any:
+        return self._host.get_private_key()
+
+    def get_public_key(self) -> Any:
+        return self._host.get_public_key()
+
+    def get_mux(self) -> Any:
+        return self._host.get_mux()
+
+    def get_connected_peers(self) -> Any:
+        return self._host.get_connected_peers()
+
+    def get_live_peers(self) -> Any:
+        return self._host.get_live_peers()
+
+    def remove_stream_handler(self, protocol_id: Any) -> Any:
+        return self._host.remove_stream_handler(protocol_id)
+
+    def get_metrics_recv_channel(self) -> Any:
+        return self._host.get_metrics_recv_channel()
+
+    async def new_stream(self, peer_id: Any, protocol_ids: Any) -> Any:
+        return await self._host.new_stream(peer_id, protocol_ids)
+
+    @property
+    def conn_manager(self) -> Any:
+        return self._host.conn_manager
 
     def run(self, *args: Any, **kwargs: Any) -> Any:
         return self._host.run(*args, **kwargs)
@@ -135,8 +191,7 @@ class BlockStoreAdapter:
         from libp2p.bitswap.cid import format_cid_for_display, parse_cid
 
         return [
-            format_cid_for_display(parse_cid(c))
-            for c in self._store.get_all_cids()
+            format_cid_for_display(parse_cid(c)) for c in self._store.get_all_cids()
         ]
 
 

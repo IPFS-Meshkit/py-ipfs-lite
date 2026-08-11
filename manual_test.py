@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Manual API test suite for py-ipfs-lite."""
+
 import json
 import os
 import subprocess
@@ -41,7 +42,13 @@ def test_endpoint(method, path, description, data=None, files=None, check_fn=Non
     import urllib.request
 
     url = f"{BASE}{path}"
-    result = {"description": description, "method": method, "path": path, "status": "FAIL", "detail": ""}
+    result = {
+        "description": description,
+        "method": method,
+        "path": path,
+        "status": "FAIL",
+        "detail": "",
+    }
 
     try:
         if method == "GET":
@@ -58,7 +65,9 @@ def test_endpoint(method, path, description, data=None, files=None, check_fn=Non
                     body += b"\r\n"
                 body += f"--{boundary}--\r\n".encode()
                 req = urllib.request.Request(url, data=body, method="POST")
-                req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+                req.add_header(
+                    "Content-Type", f"multipart/form-data; boundary={boundary}"
+                )
             else:
                 req = urllib.request.Request(url, data=b"", method="POST")
         elif method == "DELETE":
@@ -81,7 +90,9 @@ def test_endpoint(method, path, description, data=None, files=None, check_fn=Non
             result["response"] = json.loads(body_bytes.decode())
         elif "application/octet-stream" in content_type:
             result["response_bytes"] = len(body_bytes)
-            result["response_preview"] = body_bytes[:200].decode("utf-8", errors="replace")
+            result["response_preview"] = body_bytes[:200].decode(
+                "utf-8", errors="replace"
+            )
         else:
             result["response_text"] = body_bytes.decode("utf-8", errors="replace")[:500]
 
@@ -137,7 +148,9 @@ def main():
         print("\n--- Pinning ---")
 
         test_endpoint("GET", "/api/v0/pin/ls", "GET pin list (default)")
-        test_endpoint("GET", "/api/v0/pin/ls?type=recursive", "GET pin list (recursive)")
+        test_endpoint(
+            "GET", "/api/v0/pin/ls?type=recursive", "GET pin list (recursive)"
+        )
         test_endpoint("GET", "/api/v0/pin/ls?type=direct", "GET pin list (direct)")
         test_endpoint("POST", "/api/v0/pin/ls", "POST pin list")
 
@@ -166,7 +179,9 @@ def main():
             print(f"  -> Added CID: {added_cid}")
 
         # Add another file
-        test_content2 = json.dumps({"key": "value", "number": 42, "nested": {"a": True}}).encode()
+        test_content2 = json.dumps(
+            {"key": "value", "number": 42, "nested": {"a": True}}
+        ).encode()
         r2 = test_endpoint(
             "POST",
             "/api/v0/add",
@@ -182,13 +197,29 @@ def main():
         print("\n--- Cat Operations ---")
 
         if added_cid:
-            test_endpoint("GET", f"/api/v0/cat?arg={added_cid}", f"GET cat file ({added_cid[:16]}...)")
-            test_endpoint("POST", f"/api/v0/cat?arg={added_cid}", f"POST cat file ({added_cid[:16]}...)")
+            test_endpoint(
+                "GET",
+                f"/api/v0/cat?arg={added_cid}",
+                f"GET cat file ({added_cid[:16]}...)",
+            )
+            test_endpoint(
+                "POST",
+                f"/api/v0/cat?arg={added_cid}",
+                f"POST cat file ({added_cid[:16]}...)",
+            )
         else:
-            RESULTS.append({"description": "GET cat (skipped - no CID)", "status": "SKIP", "detail": "Add failed"})
+            RESULTS.append(
+                {
+                    "description": "GET cat (skipped - no CID)",
+                    "status": "SKIP",
+                    "detail": "Add failed",
+                }
+            )
 
         # Cat with invalid CID
-        test_endpoint("GET", "/api/v0/cat?arg=QmInvalidCid123", "GET cat invalid CID (expect 404)")
+        test_endpoint(
+            "GET", "/api/v0/cat?arg=QmInvalidCid123", "GET cat invalid CID (expect 404)"
+        )
 
         # ---- BLOCK OPERATIONS ----
         print("\n--- Block Operations ---")
@@ -226,12 +257,20 @@ def main():
                     f"POST block rm ({put_cid[:16]}...)",
                 )
             else:
-                RESULTS.append({"description": "POST block rm (skipped)", "status": "SKIP"})
+                RESULTS.append(
+                    {"description": "POST block rm (skipped)", "status": "SKIP"}
+                )
         else:
-            RESULTS.append({"description": "Block ops (skipped - no CID)", "status": "SKIP"})
+            RESULTS.append(
+                {"description": "Block ops (skipped - no CID)", "status": "SKIP"}
+            )
 
         # Block stat with invalid CID
-        test_endpoint("POST", "/api/v0/block/stat?arg=QmInvalid", "POST block stat invalid (expect error)")
+        test_endpoint(
+            "POST",
+            "/api/v0/block/stat?arg=QmInvalid",
+            "POST block stat invalid (expect error)",
+        )
 
         # ---- DAG OPERATIONS ----
         print("\n--- DAG Operations ---")
@@ -340,14 +379,24 @@ def main():
             RESULTS.append({"description": "Pin add/rm (skipped)", "status": "SKIP"})
 
         # Pin invalid CID
-        test_endpoint("POST", "/api/v0/pin/add?arg=QmInvalid", "POST pin add invalid CID (expect error)")
+        test_endpoint(
+            "POST",
+            "/api/v0/pin/add?arg=QmInvalid",
+            "POST pin add invalid CID (expect error)",
+        )
 
         # ---- ERROR HANDLING ----
         print("\n--- Error Handling ---")
 
         test_endpoint("GET", "/api/v0/cat?arg=", "GET cat empty arg (expect error)")
-        test_endpoint("GET", "/api/v0/dag/get?arg=", "GET dag get empty arg (expect error)")
-        test_endpoint("POST", "/api/v0/block/stat?arg=", "POST block stat empty arg (expect error)")
+        test_endpoint(
+            "GET", "/api/v0/dag/get?arg=", "GET dag get empty arg (expect error)"
+        )
+        test_endpoint(
+            "POST",
+            "/api/v0/block/stat?arg=",
+            "POST block stat empty arg (expect error)",
+        )
 
         # ---- RESULTS ----
         print("\n" + "=" * 70)
@@ -361,7 +410,9 @@ def main():
         total = len(RESULTS)
 
         for r in RESULTS:
-            icon = {"PASS": "✅", "FAIL": "❌", "ERROR": "⚠️", "SKIP": "⏭️"}.get(r["status"], "?")
+            icon = {"PASS": "✅", "FAIL": "❌", "ERROR": "⚠️", "SKIP": "⏭️"}.get(
+                r["status"], "?"
+            )
             print(f"  {icon} [{r['method']}] {r['description']}")
             if r["status"] == "FAIL" or r["status"] == "ERROR":
                 print(f"     Detail: {r.get('detail', 'N/A')[:150]}")
@@ -371,7 +422,9 @@ def main():
                     resp_str = resp_str[:120] + "..."
                 print(f"     Response: {resp_str}")
 
-        print(f"\n  Total: {total} | ✅ Passed: {passed} | ❌ Failed: {failed} | ⚠️ Errors: {errors} | ⏭️ Skipped: {skipped}")
+        print(
+            f"\n  Total: {total} | ✅ Passed: {passed} | ❌ Failed: {failed} | ⚠️ Errors: {errors} | ⏭️ Skipped: {skipped}"
+        )
 
     finally:
         proc.kill()

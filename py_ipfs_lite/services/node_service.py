@@ -12,6 +12,7 @@ class NodeIdentity:
 
 async def get_identity(peer: Peer) -> NodeIdentity:
     from py_ipfs_lite.exceptions import PeerNotStartedError
+
     if not peer.host:
         raise PeerNotStartedError("Peer is not initialized")
     import typing

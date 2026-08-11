@@ -1,6 +1,6 @@
 import contextlib
 import logging
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from typing import (
     Any,
@@ -241,7 +241,7 @@ class SeekableReader:
     def __repr__(self) -> str:
         return f"SeekableReader({len(self._data)} bytes, pos={self._pos})"
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[bytes]:
         """Yield the full data as a single chunk for sync iteration."""
         yield self._data
 
@@ -403,7 +403,7 @@ class Peer:
         self._gc_lock = RWLock()
         self._state = PeerState.STOPPED
         self._exit_stack = contextlib.AsyncExitStack()
-        self.connection_tracker = None
+        self.connection_tracker: ConnectionStatsTracker | None = None
         self._auto_connector = None
         self._connection_pruner = None
 
@@ -480,6 +480,7 @@ class Peer:
             listen_addrs=maddrs,
             sec_opt=sec_opt,  # type: ignore[arg-type]
             enable_quic=has_quic,
+            enable_mDNS=self.config.enable_mdns,
             connection_config=quic_cfg,
             peerstore_opt=peerstore_opt,
             resource_manager=resource_manager,
@@ -587,7 +588,11 @@ class Peer:
                 self._exchange = exchange
 
             def _new_session(self) -> Any:
-                return self._exchange.new_session() if hasattr(self._exchange, "new_session") else self._exchange
+                return (
+                    self._exchange.new_session()
+                    if hasattr(self._exchange, "new_session")
+                    else self._exchange
+                )
 
             async def get_block(
                 self,
@@ -599,11 +604,15 @@ class Peer:
                 session = self._new_session()
                 if return_peer:
                     with trio.fail_after(timeout):
-                        data = await session.get_block(cid, peer_id=peer_id, timeout=timeout)
+                        data = await session.get_block(
+                            cid, peer_id=peer_id, timeout=timeout
+                        )
                     return (data, peer_id)
                 else:
                     with trio.fail_after(timeout):
-                        res = await session.get_block(cid, peer_id=peer_id, timeout=timeout)
+                        res = await session.get_block(
+                            cid, peer_id=peer_id, timeout=timeout
+                        )
 
                 if res and not isinstance(res, tuple):
                     IPFS_BITSWAP_BYTES_RECEIVED_TOTAL.inc(len(res))
@@ -616,7 +625,9 @@ class Peer:
                 elif hasattr(self._exchange, "get_blocks_batch"):
                     return await self._exchange.get_blocks_batch(cids)
                 else:
-                    raise AttributeError("Neither session nor exchange has get_blocks_batch")
+                    raise AttributeError(
+                        "Neither session nor exchange has get_blocks_batch"
+                    )
 
             async def start(self) -> None:
                 await self._exchange.start()
@@ -702,6 +713,8 @@ class Peer:
     async def _keep_alive_loop(self) -> None:
         """Periodically ping all connected peers to keep idle connections alive."""
         raw_host = getattr(self.host, "_host", self.host)
+        if raw_host is None:
+            return
 
         while True:
             await trio.sleep(15.0)  # Ping every 15 seconds to beat 30s idle timeout
@@ -736,8 +749,15 @@ class Peer:
         # cycle: ping_iter tried to call stream.is_closed() on the cached
         # NetStream object, which does not have that attribute.
         from libp2p.host.ping import PingService
+
         raw_host = getattr(self.host, "_host", self.host)
-        ping_service = PingService(raw_host)
+        if raw_host is None:
+            return
+        from typing import cast
+
+        from libp2p.abc import IHost
+
+        ping_service = PingService(cast(IHost, raw_host))
         try:
             with trio.move_on_after(10.0):
                 await ping_service.ping(peer_id, ping_amt=1)
@@ -899,12 +919,13 @@ class Peer:
                     progress_callback=wrapped_callback,
                 )
         cid_str = format_cid_for_display(raw_cid)
-        if self.routing:
+        routing = self.routing
+        if routing is not None:
 
             async def _bg_provide() -> None:
                 try:
                     with trio.fail_after(t_val):
-                        await self.routing.provide(cid_str)
+                        await routing.provide(cid_str)
                 except Exception as e:
                     logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
 
@@ -922,6 +943,7 @@ class Peer:
         output_path: str | None = None,
         timeout: float | None = None,
         stream: bool = False,
+        progress_callback: Callable[[int, int], None] | None = None,
     ) -> bytes | SeekableReader | AsyncIterator[bytes] | None:
         """
         Fetch a file by its CID.
@@ -948,6 +970,20 @@ class Peer:
                 info = info_from_p2p_addr(maddr)
                 await self.host.connect(info)  # type: ignore[union-attr]
 
+        # Extract total file size from root node's UnixFS metadata for progress tracking
+        total_file_size = 0
+        if progress_callback is not None:
+            try:
+                root_data = await self.blockstore.get(cid_to_bytes(cid))  # type: ignore[union-attr]
+                if root_data:
+                    root_codec = parse_cid_codec(cid_to_bytes(cid))
+                    if root_codec == "dag-pb":
+                        _, root_unixfs = decode_dag_pb(root_data)
+                        if root_unixfs and root_unixfs.filesize:
+                            total_file_size = root_unixfs.filesize
+            except Exception:
+                pass  # If we can't get size, progress will be None/Unknown
+
         from libp2p.bitswap.dag import is_directory_node
 
         class _FetchAffinity:
@@ -960,11 +996,22 @@ class Peer:
 
         affinity = _FetchAffinity()
 
+        # Seed affinity with provider peer ID so first block request skips DHT
+        if provider_addr:
+            try:
+                maddr = Multiaddr(provider_addr)
+                info = info_from_p2p_addr(maddr)
+                affinity.record(info.peer_id)
+            except Exception:
+                pass
+
         # Helper to isolate trio.fail_after from the async generator
         async def fetch_block_with_timeout(current_cid: Any) -> Any:
             with trio.fail_after(t_val):
                 res = await self._exchange.get_block(  # type: ignore[union-attr, call-arg]
-                    current_cid, peer_id=affinity.last_good_peer, return_peer=True,
+                    current_cid,
+                    peer_id=affinity.last_good_peer,
+                    return_peer=True,
                     timeout=t_val,
                 )
                 if res and isinstance(res, tuple):
@@ -983,6 +1030,8 @@ class Peer:
             codec = parse_cid_codec(cid_to_bytes(current_cid))
             if codec == "raw":
                 yield data
+                if progress_callback is not None and total_file_size > 0:
+                    progress_callback(len(data), total_file_size)
                 return
 
             if codec == "dag-pb":
@@ -997,6 +1046,8 @@ class Peer:
                 if not links:
                     if unixfs and unixfs.data:
                         yield unixfs.data
+                        if progress_callback is not None and total_file_size > 0:
+                            progress_callback(len(unixfs.data), total_file_size)
                     return
 
                 batch_size = 32 if self.config.bitswap_batch_fetch else 1
@@ -1027,9 +1078,13 @@ class Peer:
                             yield chunk
 
         if output_path:
+            bytes_written = 0
             with open(output_path, "wb") as f:
                 async for chunk in fetch_stream(cid):
                     f.write(chunk)
+                    bytes_written += len(chunk)
+                    if progress_callback is not None and total_file_size > 0:
+                        progress_callback(bytes_written, total_file_size)
             return None
 
         if stream:
@@ -1061,12 +1116,13 @@ class Peer:
         async with self._gc_lock.read_lock():
             await self.blockstore.put(cid, data)  # type: ignore[union-attr]
         cid_str = format_cid_for_display(cid)
-        if self.routing:
+        routing = self.routing
+        if routing is not None:
 
             async def _bg_provide() -> None:
                 try:
                     with trio.fail_after(t_val):
-                        await self.routing.provide(cid_str)
+                        await routing.provide(cid_str)
                 except Exception as e:
                     logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
 
