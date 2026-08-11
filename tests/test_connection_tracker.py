@@ -144,6 +144,28 @@ def test_check_for_leaks_reconciles_closed_without_event():
     assert tracker.peer_stream_stats["peer1"].current_open == 0
 
 
+def test_lazy_protocol_refresh_rebuckets_stats():
+    """Protocol negotiated after open should move the by_protocol bucket."""
+    tracker = _make_tracker()
+    stream = _FakeStream("peer1", protocol=None, sid="8")
+
+    import trio
+
+    trio.run(tracker.opened_stream, None, stream)
+
+    ps = tracker.peer_stream_stats["peer1"]
+    assert ps.by_protocol == {"unknown": 1}
+
+    # Negotiation completes: protocol becomes known on the live object
+    stream.protocol_id = "/ipfs/ping/1.0.0"
+
+    record = tracker.streams["sid:8"]
+    tracker._refresh_record_metadata(record)
+
+    assert record.protocol == "/ipfs/ping/1.0.0"
+    assert ps.by_protocol == {"/ipfs/ping/1.0.0": 1}
+
+
 def test_stream_stats_snapshot_shape():
     tracker = _make_tracker()
     stream = _FakeStream("peer1", protocol="/ipfs/ping/1.0.0", sid="3")

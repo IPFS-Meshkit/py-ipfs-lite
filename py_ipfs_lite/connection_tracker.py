@@ -223,6 +223,30 @@ class ConnectionStatsTracker(INotifee):
             f"open_now={peer_stats.current_open}"
         )
 
+    def _refresh_record_metadata(self, record: StreamRecord) -> None:
+        """
+        Lazily fill in protocol/direction after stream negotiation, and move
+        the peer's by_protocol bucket if the protocol became known.
+        """
+        old_protocol = record.protocol
+        if record.protocol is None:
+            record.protocol = _stream_protocol(record.stream_ref)
+        if record.direction == "unknown":
+            record.direction = _stream_direction(record.stream_ref)
+
+        if old_protocol != record.protocol and record.protocol is not None:
+            peer_stats = self.peer_stream_stats.get(record.peer_id)
+            if peer_stats is not None:
+                old_bucket = old_protocol or "unknown"
+                if peer_stats.by_protocol.get(old_bucket, 0) > 0:
+                    peer_stats.by_protocol[old_bucket] -= 1
+                if peer_stats.by_protocol.get(old_bucket, 0) == 0:
+                    peer_stats.by_protocol.pop(old_bucket, None)
+                new_bucket = record.protocol
+                peer_stats.by_protocol[new_bucket] = (
+                    peer_stats.by_protocol.get(new_bucket, 0) + 1
+                )
+
     # ------------------------------------------------------------------
     # Leak detection
     # ------------------------------------------------------------------
@@ -241,10 +265,7 @@ class ConnectionStatsTracker(INotifee):
         for key, record in list(self.streams.items()):
             # Refresh protocol/direction lazily: protocol negotiation and
             # direction tagging happen after the opened_stream notifee fires.
-            if record.protocol is None:
-                record.protocol = _stream_protocol(record.stream_ref)
-            if record.direction == "unknown":
-                record.direction = _stream_direction(record.stream_ref)
+            self._refresh_record_metadata(record)
 
             # Reconcile streams closed without a notifee event
             try:
@@ -308,10 +329,7 @@ class ConnectionStatsTracker(INotifee):
         """JSON-ready global + per-peer stream statistics."""
         # Refresh protocol/direction so the report reflects negotiated values.
         for record in self.streams.values():
-            if record.protocol is None:
-                record.protocol = _stream_protocol(record.stream_ref)
-            if record.direction == "unknown":
-                record.direction = _stream_direction(record.stream_ref)
+            self._refresh_record_metadata(record)
 
         open_streams = [
             {
