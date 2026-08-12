@@ -1,5 +1,6 @@
 import os
 import tempfile
+from typing import Any
 
 import pytest
 import trio
@@ -326,6 +327,97 @@ async def test_direct_pin_does_not_protect_children(memory_config):
         assert not await peer.has_block(child_cid)
     finally:
         await peer.close()
+
+
+class _RecordingNetwork:
+    """Fake network that records peers whose connections were closed."""
+
+    def __init__(self) -> None:
+        self.closed_peers: list[Any] = []
+
+    async def close_peer(self, peer_id: Any) -> None:
+        self.closed_peers.append(peer_id)
+
+
+class _StubHost:
+    """Fake host exposing only get_network() (used by Peer._ping_peer)."""
+
+    def __init__(self) -> None:
+        self.network = _RecordingNetwork()
+
+    def get_network(self) -> _RecordingNetwork:
+        return self.network
+
+
+@pytest.mark.trio
+async def test_ping_timeout_closes_peer_connection(monkeypatch):
+    """
+    A keep-alive ping that times out must close the peer's connection(s) so
+    the orphaned ping stream is reset and counted as closed.  Before the fix,
+    move_on_after swallowed the cancellation and the stream leaked forever.
+    """
+    from py_ipfs_lite.peer import Peer
+
+    class _StubPingService:
+        def __init__(self, host: Any) -> None:
+            self.host = host
+
+        async def ping(self, peer_id: Any, ping_amt: int = 1) -> None:
+            await trio.sleep_forever()  # never responds -> timeout
+
+    monkeypatch.setattr("libp2p.host.ping.PingService", _StubPingService)
+
+    peer = object.__new__(Peer)
+    peer.host = _StubHost()
+    peer.connection_tracker = None
+
+    await peer._ping_peer("peer1", timeout=0.05)
+
+    assert peer.host.get_network().closed_peers == ["peer1"]
+
+
+@pytest.mark.trio
+async def test_ping_success_does_not_close_connection(monkeypatch):
+    from py_ipfs_lite.peer import Peer
+
+    class _StubPingService:
+        def __init__(self, host: Any) -> None:
+            self.host = host
+
+        async def ping(self, peer_id: Any, ping_amt: int = 1) -> None:
+            return None
+
+    monkeypatch.setattr("libp2p.host.ping.PingService", _StubPingService)
+
+    peer = object.__new__(Peer)
+    peer.host = _StubHost()
+    peer.connection_tracker = None
+
+    await peer._ping_peer("peer1", timeout=0.05)
+
+    assert peer.host.get_network().closed_peers == []
+
+
+@pytest.mark.trio
+async def test_ping_error_closes_peer_connection(monkeypatch):
+    from py_ipfs_lite.peer import Peer
+
+    class _StubPingService:
+        def __init__(self, host: Any) -> None:
+            self.host = host
+
+        async def ping(self, peer_id: Any, ping_amt: int = 1) -> None:
+            raise RuntimeError("peer unreachable")
+
+    monkeypatch.setattr("libp2p.host.ping.PingService", _StubPingService)
+
+    peer = object.__new__(Peer)
+    peer.host = _StubHost()
+    peer.connection_tracker = None
+
+    await peer._ping_peer("peer1", timeout=0.05)
+
+    assert peer.host.get_network().closed_peers == ["peer1"]
 
 
 @pytest.mark.trio

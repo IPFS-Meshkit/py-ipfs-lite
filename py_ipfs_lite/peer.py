@@ -784,7 +784,7 @@ class Peer:
             except Exception as e:
                 logger.debug(f"Stream leak monitor error: {e}")
 
-    async def _ping_peer(self, peer_id: Any) -> None:
+    async def _ping_peer(self, peer_id: Any, timeout: float = 10.0) -> None:
         # Create a fresh PingService for every call so that PingService's
         # internal _outbound_streams cache is always empty.  Reusing a single
         # PingService instance caused an AttributeError on the second keep-alive
@@ -801,7 +801,16 @@ class Peer:
 
         ping_service = PingService(cast(IHost, raw_host))
         try:
-            with trio.move_on_after(10.0):
+            # IMPORTANT: use fail_after, NOT move_on_after.  move_on_after
+            # swallows the cancellation when the timeout fires, so a ping to a
+            # slow peer is silently abandoned and its stream is orphaned (it
+            # is never closed/reset by PingService, whose cleanup only runs on
+            # a *raised* exception).  Those orphaned streams accumulate as
+            # resource leaks.  fail_after raises TooSlowError instead, which
+            # triggers the close_peer cleanup below: closing the connection
+            # resets every stream on it (including the orphaned ping stream),
+            # so the stream tracker counts them as closed.
+            with trio.fail_after(timeout):
                 await ping_service.ping(peer_id, ping_amt=1)
                 if self.connection_tracker:
                     self.connection_tracker.mark_ping_completed(peer_id.to_base58())
