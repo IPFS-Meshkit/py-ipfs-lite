@@ -312,6 +312,126 @@ class ConnectionStatsTracker(INotifee):
     # Leak detection
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _record_stream_dead(record: StreamRecord) -> bool:
+        """
+        True when a tracked stream is no longer live at the libp2p level.
+
+        ``NetStream`` historically exposes no ``is_closed`` attribute, so the
+        old reconcile (``record.stream_ref.is_closed``) silently raised
+        ``AttributeError`` on every record and never pruned anything.  This
+        checks every reliable signal instead:
+
+        * the stream object itself (``is_closed`` attribute/property/method),
+        * the underlying muxed stream (``QUICStream.is_closed()`` / state),
+        * the stream's own terminal state machine,
+        * the owning connection (a closed connection means every stream on it
+          is dead — covers connections that die without dispatching per-stream
+          ``closed_stream`` events).
+        """
+        ref = record.stream_ref
+
+        # 1) The stream object itself reports closed.
+        try:
+            is_closed = getattr(ref, "is_closed", None)
+            if is_closed is not None:
+                return bool(is_closed() if callable(is_closed) else is_closed)
+        except Exception:
+            pass
+
+        # 2) The underlying muxed stream (QUICStream) is closed/reset.
+        try:
+            muxed = getattr(ref, "muxed_stream", None)
+            if muxed is not None:
+                is_closed = getattr(muxed, "is_closed", None)
+                if is_closed is not None:
+                    if callable(is_closed):
+                        if is_closed():
+                            return True
+                    elif is_closed:
+                        return True
+                state = getattr(muxed, "_state", None)
+                name = getattr(state, "name", None) or getattr(state, "value", None)
+                if name in ("CLOSED", "RESET", "closed", "reset"):
+                    return True
+        except Exception:
+            pass
+
+        # 3) The NetStream state machine reached a terminal state.
+        try:
+            state = getattr(ref, "_state", None)
+            name = getattr(state, "name", "")
+            if name in ("CLOSE_BOTH", "RESET", "ERROR"):
+                return True
+        except Exception:
+            pass
+
+        # 4) The owning connection is closed: every stream on it is dead.
+        try:
+            swarm_conn = getattr(ref, "swarm_conn", None)
+            if swarm_conn is not None and getattr(swarm_conn, "is_closed", False):
+                return True
+        except Exception:
+            pass
+        try:
+            muxed_conn = getattr(ref, "muxed_conn", None)
+            if muxed_conn is not None:
+                is_closed = getattr(muxed_conn, "is_closed", None)
+                if is_closed is not None:
+                    if callable(is_closed):
+                        if is_closed():
+                            return True
+                    elif is_closed:
+                        return True
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
+    def _record_on_conn(
+        record: StreamRecord, conn: INetConn, conn_muxed_id: int
+    ) -> bool:
+        """
+        True when *record* lives on the connection that is disconnecting.
+
+        Matches either by the ``SwarmConn`` object identity (the notifee
+        receives the same object) or by the underlying muxed connection's
+        object id (the identity the stream key is scoped on).
+        """
+        try:
+            ref = record.stream_ref
+            if getattr(ref, "swarm_conn", None) is conn:
+                return True
+            if conn_muxed_id:
+                if id(getattr(ref, "muxed_conn", None)) == conn_muxed_id:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _finalize_record(self, key: str, record: StreamRecord, now: float) -> None:
+        """
+        Count a stream record as closed and remove it from the live set.
+
+        Shared by the leak-sweep reconciliation and the ``disconnected``
+        handler so both capture reset counts and lifetime analytics exactly
+        like a normal ``closed_stream`` event (which never reached us).
+        """
+        state = getattr(record.stream_ref, "_state", None)
+        if state is not None and getattr(state, "name", "") == "RESET":
+            record.was_reset = True
+        self.streams.pop(key, None)
+        peer_stats = self.peer_stream_stats.setdefault(
+            record.peer_id, PeerStreamStats(peer_id=record.peer_id)
+        )
+        peer_stats.total_closed += 1
+        peer_stats.current_open = max(0, peer_stats.current_open - 1)
+        if record.was_reset:
+            peer_stats.total_resets += 1
+        if record.opened_at > 0:
+            self._record_lifetime(record.peer_id, now - record.opened_at)
+        self._mark_finalized(key)
+
     def check_for_leaks(self, threshold_seconds: float) -> list[StreamRecord]:
         """
         Flag streams that have been open longer than *threshold_seconds*.
@@ -328,34 +448,12 @@ class ConnectionStatsTracker(INotifee):
             # direction tagging happen after the opened_stream notifee fires.
             self._refresh_record_metadata(record)
 
-            # Reconcile streams closed without a notifee event
-            try:
-                closed = bool(record.stream_ref.is_closed)
-            except Exception:
-                closed = False
-
-            if closed:
-                # This record is genuinely closed.  Refresh metadata (already
-                # done at the top of the loop) and capture analytics exactly
-                # like a normal close, so reconciliation doesn't lose
-                # reset/lifetime data.  Note: even if ``key`` is in
-                # ``_finalized_keys`` (a duplicate close raced with the
-                # notifee), this record still represents a real stream and
-                # must be counted.
-                state = getattr(record.stream_ref, "_state", None)
-                if state is not None and getattr(state, "name", "") == "RESET":
-                    record.was_reset = True
-                self.streams.pop(key, None)
-                peer_stats = self.peer_stream_stats.setdefault(
-                    record.peer_id, PeerStreamStats(peer_id=record.peer_id)
-                )
-                peer_stats.total_closed += 1
-                peer_stats.current_open = max(0, peer_stats.current_open - 1)
-                if record.was_reset:
-                    peer_stats.total_resets += 1
-                if record.opened_at > 0:
-                    self._record_lifetime(record.peer_id, now - record.opened_at)
-                self._mark_finalized(key)
+            # Reconcile streams closed without a notifee event.  ``key`` may
+            # already be in ``_finalized_keys`` (a duplicate close raced with
+            # the notifee), but this record still represents a real stream and
+            # must be counted.
+            if self._record_stream_dead(record):
+                self._finalize_record(key, record, now)
                 continue
 
             if record.suspected_leak:
@@ -566,6 +664,18 @@ class ConnectionStatsTracker(INotifee):
             stats = self.stats[peer_id]
             stats.current_connections = max(0, stats.current_connections - 1)
             stats.last_disconnected_at = now_str
+
+        # Prune stream records on the disconnecting connection.  libp2p does
+        # not always dispatch a per-stream ``closed_stream`` event when a
+        # connection dies (e.g. a QUIC connection that terminates without
+        # walking its SwarmConn cleanup), so finalize those records here —
+        # otherwise they would live on as phantom leaks until the sweep's
+        # connection-level reconciliation catches up.
+        conn_muxed_id = id(getattr(conn, "muxed_conn", None))
+        now = time.monotonic()
+        for key, record in list(self.streams.items()):
+            if self._record_on_conn(record, conn, conn_muxed_id):
+                self._finalize_record(key, record, now)
 
     async def listen(self, network: INetwork, multiaddr: "Multiaddr") -> None:
         pass

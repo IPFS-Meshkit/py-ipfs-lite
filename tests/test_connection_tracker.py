@@ -12,8 +12,16 @@ from py_ipfs_lite.connection_tracker import ConnectionStatsTracker
 
 
 class _FakeMuxedConn:
-    def __init__(self, peer_id: str) -> None:
+    def __init__(self, peer_id: str, is_closed: bool = False) -> None:
         self.peer_id = SimpleNamespace(to_base58=lambda: peer_id)
+        self.is_closed = is_closed
+
+
+class _FakeConn:
+    """Minimal stand-in for the INetConn passed to ``disconnected``."""
+
+    def __init__(self, muxed_conn: _FakeMuxedConn) -> None:
+        self.muxed_conn = muxed_conn
 
 
 class _FakeStream:
@@ -23,15 +31,24 @@ class _FakeStream:
         protocol: str | None = None,
         sid: str = "1",
         muxed_conn: _FakeMuxedConn | None = None,
+        *,
+        quic_muxed_stream: bool = False,
+        swarm_conn: object | None = None,
     ) -> None:
         if muxed_conn is None:
             muxed_conn = _FakeMuxedConn(peer_id)
         self.muxed_conn = muxed_conn
-        self.muxed_stream = SimpleNamespace(stream_id=sid, muxed_conn=muxed_conn)
+        if quic_muxed_stream:
+            # QUICStream-like: exposes is_closed() and a state machine
+            self.muxed_stream = _FakeQUICStream(sid, muxed_conn)
+        else:
+            self.muxed_stream = SimpleNamespace(stream_id=sid, muxed_conn=muxed_conn)
         self.protocol_id = protocol
         self._direction = MagicMock(name="OUTBOUND")
         self._state = MagicMock(name="OPEN")
         self._closed = False
+        if swarm_conn is not None:
+            self.swarm_conn = swarm_conn
 
     def get_protocol(self):
         return self.protocol_id
@@ -39,6 +56,52 @@ class _FakeStream:
     @property
     def is_closed(self) -> bool:
         return self._closed
+
+
+class _FakeQUICStream:
+    """QUICStream-like muxed stream with is_closed() and _state."""
+
+    def __init__(self, sid: str, muxed_conn: _FakeMuxedConn) -> None:
+        self.stream_id = sid
+        self.muxed_conn = muxed_conn
+        self._state = MagicMock(name="OPEN")
+        self._closed = False
+
+    def is_closed(self) -> bool:
+        return self._closed
+
+
+class _FakeNetStreamLike:
+    """
+    NetStream-shaped fake that does NOT expose ``is_closed``.
+
+    The real ``NetStream`` historically had no ``is_closed`` attribute (the
+    reconcile's ``getattr`` fell back to ``None``), which is exactly the
+    production shape these tests must exercise.
+    """
+
+    def __init__(
+        self,
+        peer_id: str,
+        sid: str = "1",
+        muxed_conn: _FakeMuxedConn | None = None,
+        *,
+        quic_muxed_stream: bool = False,
+        swarm_conn: object | None = None,
+    ) -> None:
+        if muxed_conn is None:
+            muxed_conn = _FakeMuxedConn(peer_id)
+        self.muxed_conn = muxed_conn
+        if quic_muxed_stream:
+            self.muxed_stream = _FakeQUICStream(sid, muxed_conn)
+        else:
+            self.muxed_stream = SimpleNamespace(stream_id=sid, muxed_conn=muxed_conn)
+        self._state = MagicMock(name="OPEN")
+        if swarm_conn is not None:
+            self.swarm_conn = swarm_conn
+
+    def get_protocol(self):
+        return None
 
 
 def _make_tracker() -> ConnectionStatsTracker:
@@ -373,3 +436,114 @@ def test_reset_stream_stats():
 
     assert not tracker.streams
     assert not tracker.peer_stream_stats
+
+
+def test_check_for_leaks_reconciles_stream_with_closed_connection():
+    """
+    A connection that dies without dispatching per-stream close events must
+    not leave phantom leak records: the sweep reconciles any record whose
+    muxed connection reports itself closed.
+    """
+    tracker = _make_tracker()
+    stream = _FakeNetStreamLike(
+        "peer1", muxed_conn=_FakeMuxedConn("peer1", is_closed=True)
+    )
+
+    rec = type("Rec", (), _make_record("peer1", "13", 5.0, stream))()
+    tracker.streams[tracker._stream_key(stream)] = rec
+
+    leaked = tracker.check_for_leaks(threshold_seconds=300)
+
+    assert leaked == []
+    assert not tracker.streams  # reconciled away
+    assert tracker.peer_stream_stats["peer1"].total_closed == 1
+    assert tracker.peer_stream_stats["peer1"].current_open == 0
+
+
+def test_check_for_leaks_reconciles_stream_with_closed_muxed_stream():
+    """
+    QUIC-style streams whose muxed-stream wrapper was closed at the transport
+    level (but never notified upward) must be reconciled as closed.
+    """
+    tracker = _make_tracker()
+    stream = _FakeNetStreamLike("peer1", quic_muxed_stream=True)
+    stream.muxed_stream._closed = True  # QUICStream.is_closed() -> True
+
+    rec = type("Rec", (), _make_record("peer1", "14", 5.0, stream))()
+    tracker.streams[tracker._stream_key(stream)] = rec
+
+    leaked = tracker.check_for_leaks(threshold_seconds=300)
+
+    assert leaked == []
+    assert not tracker.streams
+    assert tracker.peer_stream_stats["peer1"].total_closed == 1
+
+
+def test_check_for_leaks_keeps_open_stream_on_open_connection():
+    """Open stream on a live connection must still be flagged as a leak."""
+    tracker = _make_tracker()
+    stream = _FakeStream(
+        "peer1", sid="15", muxed_conn=_FakeMuxedConn("peer1", is_closed=False)
+    )
+
+    rec = type("Rec", (), _make_record("peer1", "15", 1000.0, stream))()
+    tracker.streams[tracker._stream_key(stream)] = rec
+
+    leaked = tracker.check_for_leaks(threshold_seconds=300)
+
+    assert len(leaked) == 1
+    assert tracker.streams  # record still live
+    assert tracker.peer_stream_stats["peer1"].suspected_leaks == 1
+
+
+@pytest.mark.trio
+async def test_disconnected_prunes_streams_on_that_connection_only():
+    """
+    When a connection disconnects, its open stream records must be finalized
+    (no closed_stream events will follow), while streams on other connections
+    — even to the same peer — must survive.
+    """
+    tracker = _make_tracker()
+    conn_a = _FakeMuxedConn("peer1")
+    conn_b = _FakeMuxedConn("peer1")
+    s_on_a = _FakeStream("peer1", sid="1", muxed_conn=conn_a)
+    s_on_b = _FakeStream("peer1", sid="2", muxed_conn=conn_b)
+
+    await tracker.opened_stream(None, s_on_a)
+    await tracker.opened_stream(None, s_on_b)
+    assert len(tracker.streams) == 2
+
+    await tracker.disconnected(None, _FakeConn(conn_a))
+
+    assert len(tracker.streams) == 1
+    assert tracker.peer_stream_stats["peer1"].current_open == 1
+    assert tracker.peer_stream_stats["peer1"].total_closed == 1
+    # The surviving record belongs to connection B
+    assert next(iter(tracker.streams.values())).stream_id == "2"
+
+    await tracker.disconnected(None, _FakeConn(conn_b))
+    assert not tracker.streams
+    assert tracker.peer_stream_stats["peer1"].total_closed == 2
+    assert tracker.peer_stream_stats["peer1"].current_open == 0
+
+
+@pytest.mark.trio
+async def test_disconnected_matches_by_swarm_conn_identity():
+    """
+    Records must also be pruned when the disconnected notifee passes the same
+    SwarmConn object the stream references (identity match, not just
+    muxed_conn id).
+    """
+    tracker = _make_tracker()
+    conn_a = _FakeMuxedConn("peer1")
+    fake_conn = _FakeConn(conn_a)
+    s = _FakeStream("peer1", sid="3", muxed_conn=conn_a, swarm_conn=fake_conn)
+
+    await tracker.opened_stream(None, s)
+    assert len(tracker.streams) == 1
+
+    # Same SwarmConn identity -> pruned (muxed-conn id also matches here, but
+    # the identity check is what drives it)
+    await tracker.disconnected(None, fake_conn)
+    assert not tracker.streams
+    assert tracker.peer_stream_stats["peer1"].total_closed == 1
