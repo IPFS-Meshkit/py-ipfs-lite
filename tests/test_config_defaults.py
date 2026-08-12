@@ -6,6 +6,27 @@ def test_config_defaults() -> None:
     assert cfg.offline is False
     assert cfg.reprovide_interval_seconds == 43200
     assert cfg.use_ipni is False
+    assert cfg.announce_addrs == ()
+
+
+def test_config_announce_addrs_from_env(monkeypatch) -> None:
+    """announce_addrs is parsed from the IPFS_LITE_ANNOUNCE_ADDRS env var."""
+    monkeypatch.setenv(
+        "IPFS_LITE_ANNOUNCE_ADDRS",
+        "/ip4/52.7.183.75/tcp/4001,/ip4/52.7.183.75/udp/4001/quic-v1",
+    )
+    cfg = Config()
+    assert cfg.announce_addrs == (
+        "/ip4/52.7.183.75/tcp/4001",
+        "/ip4/52.7.183.75/udp/4001/quic-v1",
+    )
+
+
+def test_config_announce_addrs_explicit_wins(monkeypatch) -> None:
+    """Explicitly passed announce_addrs override the env var."""
+    monkeypatch.setenv("IPFS_LITE_ANNOUNCE_ADDRS", "/ip4/8.8.8.8/tcp/4001")
+    cfg = Config(announce_addrs=("/ip4/52.7.183.75/tcp/4001",))
+    assert cfg.announce_addrs == ("/ip4/52.7.183.75/tcp/4001",)
 
 
 def test_add_params_defaults() -> None:

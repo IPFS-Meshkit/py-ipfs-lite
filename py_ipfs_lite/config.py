@@ -28,6 +28,10 @@ class Config:
     bitswap_batch_fetch: bool = False
     # mDNS peer discovery
     enable_mdns: bool = False
+    # Addresses advertised to peers via Identify, replacing the 0.0.0.0
+    # listen addresses (which no peer can dial back). Comma-separated
+    # multiaddrs, e.g. "/ip4/203.0.113.5/tcp/4001,/ip4/203.0.113.5/udp/4001/quic-v1".
+    announce_addrs: tuple[str, ...] = ()
     # Resource-leak monitoring: streams open longer than this many seconds
     # are flagged as suspected leaks by the periodic sweep.
     stream_leak_threshold_seconds: float = 300.0
@@ -51,6 +55,15 @@ class Config:
             raise ValueError(
                 "conn_mgr_low_water cannot be greater than conn_mgr_high_water."
             )
+
+        # Allow announce addresses to be configured via env var so the
+        # Docker image / restart script does not need code changes.
+        if not self.announce_addrs:
+            env_announce = os.getenv("IPFS_LITE_ANNOUNCE_ADDRS")
+            if env_announce:
+                self.announce_addrs = tuple(
+                    a.strip() for a in env_announce.split(",") if a.strip()
+                )
 
         try:
             self.blockstore_type = BlockStoreType(self.blockstore_type)

@@ -475,6 +475,17 @@ class Peer:
             enable_circuit_breaker=False,
         )
 
+        # Announce configured public addresses instead of the 0.0.0.0 listen
+        # addrs so peers can dial this node back (without this, Identify
+        # advertises 0.0.0.0 and remote peers drop the connection, leaving
+        # the node stuck with only a handful of peers).
+        announce_maddrs = None
+        if self.config.announce_addrs:
+            announce_maddrs = [
+                Multiaddr(a) if isinstance(a, str) else a
+                for a in self.config.announce_addrs
+            ]
+
         raw_host = new_host(
             key_pair=self._host_key,
             listen_addrs=maddrs,
@@ -484,6 +495,7 @@ class Peer:
             connection_config=quic_cfg,
             peerstore_opt=peerstore_opt,
             resource_manager=resource_manager,
+            announce_addrs=announce_maddrs,
         )
         self.connection_tracker = ConnectionStatsTracker()
         raw_host.get_network().register_notifee(self.connection_tracker)
