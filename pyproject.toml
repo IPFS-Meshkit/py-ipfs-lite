@@ -115,6 +115,8 @@ known-first-party = ["py_ipfs_lite", "tests"]
 "py_ipfs_lite/interfaces.py" = ["E402"]
 "py_ipfs_lite/ipns.py" = ["E402"]
 "py_ipfs_lite/dag_utils.py" = ["E722"]
+"manual_test.py" = ["E501", "D", "E402", "F841"]
+"test_cli_interop.py" = ["E501", "D", "E402", "F841"]
 
 [tool.mypy]
 python_version = "3.10"
