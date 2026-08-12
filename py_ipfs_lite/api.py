@@ -272,7 +272,11 @@ async def swarm_stream_stats(request: Request) -> Any:
         raise HTTPException(
             status_code=503, detail="Connection tracker not initialized"
         )
-    return JSONResponse(content=peer.connection_tracker.stream_stats_snapshot())
+    return JSONResponse(
+        content=peer.connection_tracker.stream_stats_snapshot(
+            leak_threshold_seconds=peer.config.stream_leak_threshold_seconds
+        )
+    )
 
 
 @app.post("/api/v0/block/stat")

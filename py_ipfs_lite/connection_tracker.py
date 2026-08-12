@@ -126,18 +126,71 @@ class ConnectionStatsTracker(INotifee):
         self.stats: dict[str, PeerConnectionStats] = {}
         self.streams: dict[str, StreamRecord] = {}
         self.peer_stream_stats: dict[str, PeerStreamStats] = {}
-        # Bounded ring of finalized stream records for lifetime analytics
-        self._lifetime_samples: list[float] = []
-        self._max_lifetime_samples = 10_000
+        # Per-peer lifetime analytics: peer_id -> (sum of durations, count).
+        # Bounded by the number of streams, unlike a global ring buffer.
+        self._peer_lifetime: dict[str, tuple[float, int]] = {}
+        # Keys of streams that were already finalized (closed).  Guards against
+        # double-counting when libp2p dispatches a second closed_stream event
+        # (or a close event races with the leak-monitor reconciliation).
+        # Keys are never reused (connection-scoped + stream-object identity), so
+        # a simple bounded FIFO is safe.
+        self._finalized_keys: dict[str, float] = {}
+        self._max_finalized_keys = 20_000
+        # Entries older than this are dropped from the dedup set.  Keys embed
+        # Python object ids which *can* be reused by the allocator after the
+        # underlying objects are garbage collected, so the dedup window must
+        # be bounded in time as well as in size.
+        self._finalized_ttl_seconds = 3_600.0
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
     def _stream_key(self, stream: INetStream) -> str:
-        sid = _stream_id(stream)
-        if sid is not None:
-            return f"sid:{sid}"
-        return f"obj:{id(stream)}"
+        """
+        Return a unique, stable key for a live stream.
+
+        Stream IDs are only unique *per muxed connection*, so a bare
+        ``sid:{stream_id}`` key collides across connections to the same peer
+        (and even across different peers): a new stream silently overwrites the
+        live record of an unrelated open stream, corrupting open counts and
+        blinding the leak detector.  Scope the key by the identity of the
+        underlying muxed connection and muxed stream object, which are stable
+        for the stream's whole lifetime (unlike ``stream_id``, which can start
+        as ``0`` on inbound streams and only be assigned later).
+        """
+        try:
+            muxed_stream = getattr(stream, "muxed_stream", None)
+            if muxed_stream is None:
+                return f"obj:{id(stream)}"
+            muxed_conn = getattr(muxed_stream, "muxed_conn", None)
+            if muxed_conn is None:
+                muxed_conn = getattr(stream, "muxed_conn", None)
+            conn_id = id(muxed_conn) if muxed_conn is not None else 0
+            return f"conn:{conn_id}:stream:{id(muxed_stream)}"
+        except Exception:
+            return f"obj:{id(stream)}"
+
+    def _mark_finalized(self, key: str) -> None:
+        """Remember a finalized stream key so a duplicate close is ignored."""
+        now = time.monotonic()
+        self._finalized_keys[key] = now
+        # Drop expired entries (dict preserves insertion order, which matches
+        # time order), then the oldest entry if still over capacity.
+        expired: list[str] = []
+        for k, ts in self._finalized_keys.items():
+            if now - ts > self._finalized_ttl_seconds:
+                expired.append(k)
+            else:
+                break
+        for k in expired:
+            self._finalized_keys.pop(k, None)
+        if len(self._finalized_keys) > self._max_finalized_keys:
+            self._finalized_keys.pop(next(iter(self._finalized_keys)), None)
+
+    def _record_lifetime(self, peer_id: str, duration: float) -> None:
+        """Accumulate a closed stream's lifetime into the peer's aggregate."""
+        total, count = self._peer_lifetime.get(peer_id, (0.0, 0))
+        self._peer_lifetime[peer_id] = (total + duration, count + 1)
 
     # ------------------------------------------------------------------
     # Stream lifecycle
@@ -179,6 +232,13 @@ class ConnectionStatsTracker(INotifee):
         key = self._stream_key(stream)
         record = self.streams.pop(key, None)
         if record is None:
+            if key in self._finalized_keys:
+                # Duplicate close event (e.g. libp2p notifying from two close
+                # paths) or a race with the leak-monitor reconciliation: the
+                # stream was already counted.  Only consult the dedup set when
+                # there is no live record — a fresh stream that (rarely) reused
+                # an allocator object id must still be finalized normally.
+                return
             # Stream opened before this tracker was registered, or key drift.
             # Finalize defensively so per-peer counts stay balanced.
             record = StreamRecord(
@@ -187,10 +247,14 @@ class ConnectionStatsTracker(INotifee):
                 opened_at=0.0,
                 stream_ref=stream,
             )
+        else:
+            # Protocol/direction are negotiated *after* the opened_stream event
+            # fires; refresh now so the by_protocol bucket reflects the real
+            # protocol instead of staying "unknown" forever.
+            self._refresh_record_metadata(record)
 
         now = time.monotonic()
         record.closed_at = now
-        record.duration = record.opened_at if record.opened_at else now
         if record.opened_at > 0:
             record.duration = now - record.opened_at
         else:
@@ -210,12 +274,9 @@ class ConnectionStatsTracker(INotifee):
             peer_stats.total_resets += 1
 
         if record.duration is not None:
-            self._lifetime_samples.append(record.duration)
-            if len(self._lifetime_samples) > self._max_lifetime_samples:
-                self._lifetime_samples = self._lifetime_samples[
-                    -self._max_lifetime_samples :
-                ]
+            self._record_lifetime(record.peer_id, record.duration)
 
+        self._mark_finalized(key)
         IPFS_STREAMS_CLOSED_TOTAL.inc()
         logger.debug(
             f"stream closed peer={record.peer_id} proto={record.protocol} "
@@ -274,12 +335,27 @@ class ConnectionStatsTracker(INotifee):
                 closed = False
 
             if closed:
+                # This record is genuinely closed.  Refresh metadata (already
+                # done at the top of the loop) and capture analytics exactly
+                # like a normal close, so reconciliation doesn't lose
+                # reset/lifetime data.  Note: even if ``key`` is in
+                # ``_finalized_keys`` (a duplicate close raced with the
+                # notifee), this record still represents a real stream and
+                # must be counted.
+                state = getattr(record.stream_ref, "_state", None)
+                if state is not None and getattr(state, "name", "") == "RESET":
+                    record.was_reset = True
                 self.streams.pop(key, None)
                 peer_stats = self.peer_stream_stats.setdefault(
                     record.peer_id, PeerStreamStats(peer_id=record.peer_id)
                 )
                 peer_stats.total_closed += 1
                 peer_stats.current_open = max(0, peer_stats.current_open - 1)
+                if record.was_reset:
+                    peer_stats.total_resets += 1
+                if record.opened_at > 0:
+                    self._record_lifetime(record.peer_id, now - record.opened_at)
+                self._mark_finalized(key)
                 continue
 
             if record.suspected_leak:
@@ -314,18 +390,26 @@ class ConnectionStatsTracker(INotifee):
         """Clear per-peer stream stats and live records (used by tests)."""
         self.streams.clear()
         self.peer_stream_stats.clear()
-        self._lifetime_samples.clear()
+        self._peer_lifetime.clear()
+        self._finalized_keys.clear()
 
     # ------------------------------------------------------------------
     # Snapshots / reports
     # ------------------------------------------------------------------
 
     def avg_stream_lifetime(self) -> float | None:
-        if not self._lifetime_samples:
+        total = 0.0
+        count = 0
+        for sum_dur, n in self._peer_lifetime.values():
+            total += sum_dur
+            count += n
+        if count == 0:
             return None
-        return sum(self._lifetime_samples) / len(self._lifetime_samples)
+        return total / count
 
-    def stream_stats_snapshot(self) -> dict[str, Any]:
+    def stream_stats_snapshot(
+        self, leak_threshold_seconds: float | None = None
+    ) -> dict[str, Any]:
         """JSON-ready global + per-peer stream statistics."""
         # Refresh protocol/direction so the report reflects negotiated values.
         for record in self.streams.values():
@@ -347,6 +431,13 @@ class ConnectionStatsTracker(INotifee):
             dump = s.model_dump()
             if not s.total_opened:
                 continue
+            # Fill in the per-peer average lifetime, which was previously
+            # never computed and always serialized as null.
+            agg = self._peer_lifetime.get(s.peer_id)
+            if agg is not None and agg[1] > 0:
+                dump["avg_lifetime_seconds"] = round(agg[0] / agg[1], 3)
+            else:
+                dump["avg_lifetime_seconds"] = None
             per_peer.append(dump)
 
         return {
@@ -354,7 +445,8 @@ class ConnectionStatsTracker(INotifee):
             "OpenStreams": open_streams,
             "AvgLifetimeSeconds": self.avg_stream_lifetime(),
             "PerPeer": per_peer,
-            "LeakThresholdConfigured": True,
+            "LeakThresholdConfigured": leak_threshold_seconds is not None,
+            "LeakThresholdSeconds": leak_threshold_seconds,
         }
 
     def mark_ping_completed(self, peer_id: str) -> None:
