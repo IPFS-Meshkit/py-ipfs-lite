@@ -123,6 +123,10 @@ def _stream_id(stream: INetStream) -> str | None:
 
 class ConnectionStatsTracker(INotifee):
     def __init__(self) -> None:
+        # The swarm network last seen in a notifee callback.  Its live
+        # ``connections`` table is the authoritative source of truth for
+        # whether a connection (and therefore its streams) is still alive.
+        self._network: INetwork | None = None
         self.stats: dict[str, PeerConnectionStats] = {}
         self.streams: dict[str, StreamRecord] = {}
         self.peer_stream_stats: dict[str, PeerStreamStats] = {}
@@ -197,6 +201,7 @@ class ConnectionStatsTracker(INotifee):
     # ------------------------------------------------------------------
 
     async def opened_stream(self, network: INetwork, stream: INetStream) -> None:
+        self._network = network
         key = self._stream_key(stream)
         peer_id = _stream_peer_id(stream) or "unknown"
 
@@ -229,6 +234,7 @@ class ConnectionStatsTracker(INotifee):
         )
 
     async def closed_stream(self, network: INetwork, stream: INetStream) -> None:
+        self._network = network
         key = self._stream_key(stream)
         record = self.streams.pop(key, None)
         if record is None:
@@ -311,6 +317,78 @@ class ConnectionStatsTracker(INotifee):
     # ------------------------------------------------------------------
     # Leak detection
     # ------------------------------------------------------------------
+
+    def _live_conn_ids(self) -> tuple[set[int], set[str]]:
+        """
+        Snapshot of the swarm's live connection table.
+
+        Returns the object ids of every registered connection (and its
+        underlying muxed connection) plus the base58 ids of every connected
+        peer.  The swarm removes connections from this table when they close
+        (``SwarmConn.close`` -> ``remove_conn``), so a stream whose owning
+        connection is absent from this snapshot is dead even when the stream
+        and connection objects have not yet reported themselves closed — the
+        exact scenario behind phantom leak records on QUIC connections that
+        terminate without dispatching per-stream close events.
+        """
+        live_ids: set[int] = set()
+        live_peers: set[str] = set()
+        network = self._network
+        if network is None:
+            return live_ids, live_peers
+        try:
+            conns_map = getattr(network, "connections", None)
+            if conns_map is None:
+                return live_ids, live_peers
+            for pid, conns in conns_map.items():
+                try:
+                    b58 = pid.to_base58() if hasattr(pid, "to_base58") else str(pid)
+                    live_peers.add(b58)
+                except Exception:
+                    pass
+                items = conns if isinstance(conns, list) else [conns]
+                for c in items:
+                    if c is None:
+                        continue
+                    live_ids.add(id(c))
+                    m = getattr(c, "muxed_conn", None)
+                    if m is not None:
+                        live_ids.add(id(m))
+        except Exception:
+            pass
+        return live_ids, live_peers
+
+    @staticmethod
+    def _record_connection_gone(
+        record: StreamRecord, live_ids: set[int], live_peers: set[str]
+    ) -> bool:
+        """
+        True when the record's owning connection is gone from the swarm table.
+
+        Called only when the tracker has a network reference.  If the record's
+        ``SwarmConn`` or muxed connection is still registered, the stream may
+        legitimately be open (fall through to the age-based leak check).  If
+        neither is registered — or the peer has no connections at all — the
+        stream is dead and must be finalized instead of flagged as a leak.
+        """
+        try:
+            ref = record.stream_ref
+            swarm_conn = getattr(ref, "swarm_conn", None)
+            if swarm_conn is not None and id(swarm_conn) in live_ids:
+                return False
+            muxed_conn = getattr(ref, "muxed_conn", None)
+            if muxed_conn is not None and id(muxed_conn) in live_ids:
+                return False
+            # Could not identify the connection by identity but the peer has
+            # no registered connections: every stream on it is dead.
+            if record.peer_id != "unknown" and record.peer_id not in live_peers:
+                return True
+            # Identifiable connection that is no longer registered.
+            if swarm_conn is not None or muxed_conn is not None:
+                return True
+            return False
+        except Exception:
+            return False
 
     @staticmethod
     def _record_stream_dead(record: StreamRecord) -> bool:
@@ -442,6 +520,7 @@ class ConnectionStatsTracker(INotifee):
         """
         leaked: list[StreamRecord] = []
         now = time.monotonic()
+        live_ids, live_peers = self._live_conn_ids()
 
         for key, record in list(self.streams.items()):
             # Refresh protocol/direction lazily: protocol negotiation and
@@ -453,6 +532,18 @@ class ConnectionStatsTracker(INotifee):
             # the notifee), but this record still represents a real stream and
             # must be counted.
             if self._record_stream_dead(record):
+                self._finalize_record(key, record, now)
+                continue
+
+            # The swarm's live connection table is the authoritative source
+            # of truth: a stream whose owning connection is no longer
+            # registered (even though the stream/conn objects have not yet
+            # reported closed) is dead.  This catches QUIC connections that
+            # terminate without dispatching per-stream close events, before
+            # the age threshold turns them into false "leaks".
+            if self._network is not None and self._record_connection_gone(
+                record, live_ids, live_peers
+            ):
                 self._finalize_record(key, record, now)
                 continue
 
@@ -556,6 +647,7 @@ class ConnectionStatsTracker(INotifee):
             self.stats[peer_id].last_ping_at = now_str
 
     async def connected(self, network: INetwork, conn: INetConn) -> None:
+        self._network = network
         peer_id = _extract_peer_id(conn)
         if peer_id is None:
             return
@@ -655,6 +747,7 @@ class ConnectionStatsTracker(INotifee):
         stats.transport = transport_type
 
     async def disconnected(self, network: INetwork, conn: INetConn) -> None:
+        self._network = network
         peer_id = _extract_peer_id(conn)
         if peer_id is None:
             return

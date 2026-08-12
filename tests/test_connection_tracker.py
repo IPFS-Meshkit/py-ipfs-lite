@@ -71,6 +71,22 @@ class _FakeQUICStream:
         return self._closed
 
 
+class _FakePeerID:
+    """Hashable peer-id stand-in (SimpleNamespace is unhashable)."""
+
+    def __init__(self, pid: str) -> None:
+        self._pid = pid
+
+    def to_base58(self) -> str:
+        return self._pid
+
+    def __hash__(self) -> int:
+        return hash(self._pid)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _FakePeerID) and other._pid == self._pid
+
+
 class _FakeNetStreamLike:
     """
     NetStream-shaped fake that does NOT expose ``is_closed``.
@@ -106,6 +122,25 @@ class _FakeNetStreamLike:
 
 def _make_tracker() -> ConnectionStatsTracker:
     return ConnectionStatsTracker()
+
+
+def _fake_network(peers: dict[str, list]) -> SimpleNamespace:
+    """
+    Build a fake swarm network whose ``connections`` table mirrors the live
+    swarm state: peer id -> list of registered connection objects.
+    """
+    conns_map = {}
+    for pid, conns in peers.items():
+        conns_map[_FakePeerID(pid)] = conns
+    return SimpleNamespace(connections=conns_map)
+
+
+def _seed_record(tracker: ConnectionStatsTracker, stream: object) -> None:
+    """Insert a live (open-looking) record for *stream* into the tracker."""
+    rec = type("Rec", (), _make_record("peer1", "99", 1000.0, stream))()
+    rec.peer_id = stream.muxed_conn.peer_id.to_base58()
+    rec.protocol = None
+    tracker.streams[tracker._stream_key(stream)] = rec
 
 
 @pytest.mark.trio
@@ -547,3 +582,68 @@ async def test_disconnected_matches_by_swarm_conn_identity():
     await tracker.disconnected(None, fake_conn)
     assert not tracker.streams
     assert tracker.peer_stream_stats["peer1"].total_closed == 1
+
+
+def test_check_for_leaks_prunes_stream_when_peer_has_no_connections():
+    """
+    A stream whose peer is absent from the swarm's live connection table is
+    dead even when its stream/connection objects look open: the table is the
+    authoritative source of truth for QUIC connections that terminate without
+    dispatching per-stream close events.
+    """
+    tracker = _make_tracker()
+    conn = _FakeMuxedConn("peer1")
+    stream = _FakeNetStreamLike("peer1", muxed_conn=conn)
+    _seed_record(tracker, stream)
+
+    # The swarm currently has NO connections registered at all.
+    tracker._network = _fake_network({})
+
+    leaked = tracker.check_for_leaks(threshold_seconds=300)
+
+    assert leaked == []  # pruned, not flagged as a leak
+    assert not tracker.streams
+    assert tracker.peer_stream_stats["peer1"].total_closed == 1
+    assert tracker.peer_stream_stats["peer1"].current_open == 0
+    assert tracker.peer_stream_stats["peer1"].suspected_leaks == 0
+
+
+def test_check_for_leaks_prunes_stream_on_removed_connection_while_peer_live():
+    """
+    The specific connection a stream lives on was removed from the swarm
+    table, but the peer still has other connections: the stream must still be
+    finalized (the connection is gone), not flagged as a leak.
+    """
+    tracker = _make_tracker()
+    dead_conn = _FakeMuxedConn("peer1")
+    stream = _FakeNetStreamLike("peer1", muxed_conn=dead_conn)
+    _seed_record(tracker, stream)
+
+    # The peer is still connected, but only via a DIFFERENT connection.
+    live_conn = _FakeMuxedConn("peer1")
+    tracker._network = _fake_network({"peer1": [live_conn]})
+
+    leaked = tracker.check_for_leaks(threshold_seconds=300)
+
+    assert leaked == []
+    assert not tracker.streams
+    assert tracker.peer_stream_stats["peer1"].total_closed == 1
+
+
+def test_check_for_leaks_keeps_stream_while_connection_registered():
+    """
+    A stream whose connection is still in the swarm table must not be pruned
+    by the connection-gone check; an old one is still flagged as a leak.
+    """
+    tracker = _make_tracker()
+    conn = _FakeMuxedConn("peer1")
+    stream = _FakeNetStreamLike("peer1", muxed_conn=conn)
+    _seed_record(tracker, stream)
+
+    tracker._network = _fake_network({"peer1": [conn]})
+
+    leaked = tracker.check_for_leaks(threshold_seconds=300)
+
+    assert len(leaked) == 1  # open long enough -> genuine leak candidate
+    assert tracker.streams  # record kept
+    assert tracker.peer_stream_stats["peer1"].suspected_leaks == 1
