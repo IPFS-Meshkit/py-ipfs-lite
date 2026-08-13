@@ -834,12 +834,14 @@ class Peer:
         peer_id_str = peer_id.to_base58()
         ping_service = PingService(cast(IHost, raw_host))
         try:
-            with trio.fail_after(timeout):
-                await ping_service.ping(peer_id, ping_amt=1)
-                if self.connection_tracker:
-                    self.connection_tracker.mark_ping_completed(peer_id_str)
-        except trio.TooSlowError:
-            logger.debug(f"Keep-alive ping timed out for {peer_id} (ignored)")
+            # We explicitly do NOT use trio.fail_after() here.
+            # ping_service.ping() has its own internal timeouts (10s for
+            # negotiation, 60s for read). If we cancel it externally, the
+            # trio.Cancelled exception bypasses libp2p's cleanup logic and
+            # permanently leaks the stream.
+            await ping_service.ping(peer_id, ping_amt=1)
+            if self.connection_tracker:
+                self.connection_tracker.mark_ping_completed(peer_id_str)
         except Exception as e:
             # Log at debug — ping failure is not actionable, connection stays open.
             logger.debug(f"Keep-alive ping failed for {peer_id} (ignored): {e}")
