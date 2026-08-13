@@ -422,6 +422,7 @@ class Peer:
         return peer
 
     async def _create_host(self) -> Any:
+        from libp2p.rcmgr.connection_limits import ConnectionLimits
         from libp2p.rcmgr.manager import ResourceLimits, new_resource_manager
         from libp2p.transport.quic.config import QUICTransportConfig
 
@@ -469,8 +470,18 @@ class Peer:
         # Disable circuit breaker: after 5 failed dials it opens and blocks
         # all new connections for 60 s, stalling recovery after a crash.
         rcmgr_max = max(self.config.conn_mgr_high_water * 4, 4000)
+        # Do NOT pass connection_limits: new_resource_manager would otherwise
+        # install Rust-style per-direction/per-peer lifecycle caps with
+        # hard-coded defaults (256 established outbound, 8 per peer).  Once
+        # the node exceeds those caps every new outbound dial is denied and
+        # closed ~1ms after registration — burning a core on deny churn and
+        # starving stream negotiation (ping/identify time out after 10 s).
+        # Connection management is owned by the swarm's conn_mgr config
+        # (watermarks + max_connections), so pass empty limits (all None =
+        # no lifecycle caps).
         resource_manager = new_resource_manager(
             limits=ResourceLimits(max_connections=rcmgr_max, max_streams=10000),
+            connection_limits=ConnectionLimits(),
             enable_graceful_degradation=False,
             enable_circuit_breaker=False,
         )
