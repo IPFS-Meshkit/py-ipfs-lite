@@ -738,11 +738,14 @@ class Peer:
             # Keep connections alive by sending periodic pings (fixes 25-30s idle disconnects)
             self._nursery.start_soon(self._keep_alive_loop)
 
-            # Actively prune excess connections so we stay near the watermarks.
-            # Without this, inbound connections from the DHT can push us to 500+
-            # even when high_watermark=150, because the swarm only enforces
-            # max_connections on add_conn — it doesn't evict established ones.
-            self._nursery.start_soon(self._connection_pruner_loop)
+            # NOTE: the connection_pruner_loop is intentionally NOT started.
+            # Pruning works by disconnecting peers, which triggers immediate
+            # reconnect attempts from both sides. Each reconnect attempt
+            # floods the QUIC layer with Duplicate CRYPTO data (retransmitted
+            # Initial packets) — each requiring AEAD decryption → 100% CPU.
+            # Instead, use max_connections for a hard QUIC-level cap and let
+            # the 600s idle timeout handle natural cleanup.
+            # self._nursery.start_soon(self._connection_pruner_loop)
 
             # Resource-leak monitoring: periodically sweep open streams and
             # flag any that have outlived the configured threshold.
