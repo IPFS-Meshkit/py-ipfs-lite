@@ -700,8 +700,16 @@ class Peer:
                 raw_swarm.connection_config.low_watermark = (
                     self.config.conn_mgr_low_water
                 )
-                raw_swarm.connection_config.max_connections = (
-                    self.config.conn_mgr_high_water
+                # Give the hard cap headroom ABOVE high_watermark, matching
+                # Kubo: high_watermark only triggers graceful pruning back to
+                # low_watermark, while the hard cap is a separate safety valve.
+                # Setting max_connections == high_watermark made swarm.add_conn
+                # reject+close every connection beyond the watermark (479
+                # rejections/min at 500 conns), burning a core on traceback
+                # logging and starving ping/identify negotiation on the
+                # connections it killed.
+                raw_swarm.connection_config.max_connections = max(
+                    self.config.conn_mgr_high_water * 4, 2000
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
