@@ -252,6 +252,13 @@ def main() -> None:
     logging.getLogger("libp2p").setLevel(logging.INFO)
     logging.getLogger("libp2p.network.auto_connector").setLevel(logging.INFO)
 
+    # Silence high-volume QUIC INFO messages (Duplicate CRYPTO, version negotiation,
+    # security verification). These fire 45+ times/second at steady state and each
+    # burns CPU via Python string formatting + file I/O. Keep WARNING+ for real errors.
+    logging.getLogger("quic").setLevel(logging.WARNING)
+    logging.getLogger("libp2p.transport.quic.listener").setLevel(logging.WARNING)
+    logging.getLogger("libp2p.network.stream.net_stream").setLevel(logging.WARNING)
+
     try:
         if parsed_args.command == "daemon":
             config = Config(

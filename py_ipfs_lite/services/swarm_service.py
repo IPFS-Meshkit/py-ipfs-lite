@@ -24,26 +24,29 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
     network = raw_host.get_network()
     peerstore = raw_host.get_peerstore()
     result = []
-    for peer_id, conns in network.connections.items():
-        # Only include peers with at least one genuinely open connection
-        conn_list = conns if isinstance(conns, list) else [conns]
-        if not any(not getattr(c, "is_closed", False) for c in conn_list):
+    seen: set = set()
+
+    # Primary source: swarm connections dict.
+    # NOTE: we intentionally do NOT check `is_closed` here.
+    # The swarm removes closed SwarmConns from this dict (swarm.py L2316-2318),
+    # but there is a brief trio async window between `event_closed.set()` and
+    # the cleanup task running. Checking `is_closed` during this window gives
+    # false-0 results. Trusting the dict is accurate enough.
+    for peer_id, conns in list(network.connections.items()):
+        try:
+            pid_str = peer_id.to_base58()
+        except Exception:
+            pid_str = str(peer_id)
+        if pid_str in seen:
             continue
-        pid_str = peer_id.to_base58()
-        # Pull real multiaddresses from peerstore so callers can dial back
+        seen.add(pid_str)
         try:
             addrs = [str(a) for a in peerstore.addrs(peer_id)]
         except Exception:
             addrs = []
-        result.append(
-            {
-                "peer": pid_str,
-                "addrs": addrs,
-            }
-        )
+        result.append({"peer": pid_str, "addrs": addrs})
+
     return SwarmPeers(count=len(result), peers=result)
-
-
 
 async def count_connections(peer: Peer) -> int:
     if peer.host is None:
