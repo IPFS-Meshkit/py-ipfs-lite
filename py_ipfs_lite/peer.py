@@ -700,16 +700,11 @@ class Peer:
                 raw_swarm.connection_config.low_watermark = (
                     self.config.conn_mgr_low_water
                 )
-                # Give the hard cap headroom ABOVE high_watermark, matching
-                # Kubo: high_watermark only triggers graceful pruning back to
-                # low_watermark, while the hard cap is a separate safety valve.
-                # Setting max_connections == high_watermark made swarm.add_conn
-                # reject+close every connection beyond the watermark (479
-                # rejections/min at 500 conns), burning a core on traceback
-                # logging and starving ping/identify negotiation on the
-                # connections it killed.
-                raw_swarm.connection_config.max_connections = max(
-                    self.config.conn_mgr_high_water * 3, 600
+                # Hard cap: high_watermark + small burst buffer.
+                # Formula was previously max(high_water*3, 600)=600 which
+                # defeated the purpose of setting high_water=150.
+                raw_swarm.connection_config.max_connections = (
+                    self.config.conn_mgr_high_water + 50
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
@@ -735,6 +730,12 @@ class Peer:
 
             # Keep connections alive by sending periodic pings (fixes 25-30s idle disconnects)
             self._nursery.start_soon(self._keep_alive_loop)
+
+            # Actively prune excess connections so we stay near the watermarks.
+            # Without this, inbound connections from the DHT can push us to 500+
+            # even when high_watermark=150, because the swarm only enforces
+            # max_connections on add_conn — it doesn't evict established ones.
+            self._nursery.start_soon(self._connection_pruner_loop)
 
             # Resource-leak monitoring: periodically sweep open streams and
             # flag any that have outlived the configured threshold.
@@ -807,6 +808,66 @@ class Peer:
                         await trio.sleep(2.0)  # 2s gap between batches
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
+
+    async def _connection_pruner_loop(self) -> None:
+        """Actively evict connections when above high_watermark.
+
+        The swarm's ``max_connections`` cap only blocks NEW connections.
+        Existing inbound connections from DHT peers can push us to 500+
+        because there's no automatic eviction of established connections.
+        This loop fills that gap by closing the least-useful peers (those
+        not in the DHT routing table and with no active streams) every 15s
+        when above high_watermark.
+        """
+        raw_host = getattr(self.host, "_host", self.host)
+        if raw_host is None:
+            return
+
+        high = self.config.conn_mgr_high_water
+        low = self.config.conn_mgr_low_water
+
+        while True:
+            await trio.sleep(15.0)
+            try:
+                network = raw_host.get_network()
+                if not hasattr(network, "connections"):
+                    continue
+
+                all_peer_ids = list(network.connections.keys())
+                total = len(all_peer_ids)
+                if total <= high:
+                    continue
+
+                to_evict = total - low
+                logger.info(
+                    "Connection pruner: %d connections > high_watermark %d, evicting %d",
+                    total, high, to_evict,
+                )
+
+                # Prefer to evict peers with no active named streams (protocol=None)
+                def _conn_score(peer_id: Any) -> int:
+                    """Lower score = more expendable."""
+                    conns = network.connections.get(peer_id, [])
+                    conn_list = conns if isinstance(conns, list) else [conns]
+                    # Prefer to keep connections that have established mux
+                    has_mux = any(
+                        not getattr(c, "is_closed", False) for c in conn_list
+                    )
+                    return 1 if has_mux else 0
+
+                # Sort: evict closed/trivial connections first
+                candidates = sorted(all_peer_ids, key=_conn_score)
+                evicted = 0
+                for peer_id in candidates[:to_evict]:
+                    try:
+                        await raw_host.disconnect(peer_id)
+                        evicted += 1
+                    except Exception:
+                        pass
+
+                logger.info("Connection pruner: evicted %d connections", evicted)
+            except Exception as e:
+                logger.debug(f"Connection pruner error: {e}")
 
     async def _stream_leak_monitor_loop(self) -> None:
         """
