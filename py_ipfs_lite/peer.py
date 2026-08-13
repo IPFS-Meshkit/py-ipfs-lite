@@ -694,16 +694,24 @@ class Peer:
             # Initialize and update connection managers BEFORE starting host
             raw_swarm = self.host._host.get_network()  # type: ignore[union-attr]
             if hasattr(raw_swarm, "connection_config") and raw_swarm.connection_config:
-                raw_swarm.connection_config.high_watermark = (
-                    self.config.conn_mgr_high_water
+                # min_connections: the floor the auto-connector maintains.
+                # Default is 50 which fights our low_watermark=15 pruner:
+                #   pruner evicts to 15 → auto-connector reconnects to 50 → repeat.
+                # Setting min_connections=low_watermark breaks the churn loop.
+                # Validation requires: low_watermark >= min_connections.
+                raw_swarm.connection_config.min_connections = (
+                    self.config.conn_mgr_low_water
                 )
                 raw_swarm.connection_config.low_watermark = (
                     self.config.conn_mgr_low_water
                 )
-                # Hard cap: high_watermark + small burst buffer (25).
-                # With high_water=60, cap is 85 connections total.
+                raw_swarm.connection_config.high_watermark = (
+                    self.config.conn_mgr_high_water
+                )
+                # Hard cap: high_watermark + small burst buffer (5).
+                # With high_water=25, cap is 30 connections total.
                 raw_swarm.connection_config.max_connections = (
-                    self.config.conn_mgr_high_water + 25
+                    self.config.conn_mgr_high_water + 5
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
