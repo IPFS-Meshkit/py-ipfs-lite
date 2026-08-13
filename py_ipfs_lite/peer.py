@@ -469,7 +469,7 @@ class Peer:
         # and never recovers because the degraded limit stays low permanently.
         # Disable circuit breaker: after 5 failed dials it opens and blocks
         # all new connections for 60 s, stalling recovery after a crash.
-        rcmgr_max = max(self.config.conn_mgr_high_water * 4, 4000)
+        rcmgr_max = max(self.config.conn_mgr_high_water * 4, 800)
         # Do NOT pass connection_limits: new_resource_manager would otherwise
         # install Rust-style per-direction/per-peer lifecycle caps with
         # hard-coded defaults (256 established outbound, 8 per peer).  Once
@@ -709,7 +709,7 @@ class Peer:
                 # logging and starving ping/identify negotiation on the
                 # connections it killed.
                 raw_swarm.connection_config.max_connections = max(
-                    self.config.conn_mgr_high_water * 4, 2000
+                    self.config.conn_mgr_high_water * 3, 600
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
@@ -765,7 +765,7 @@ class Peer:
             return
 
         while True:
-            await trio.sleep(60.0)  # 60 s interval — QUIC idle timeout is 600 s
+            await trio.sleep(120.0)  # 120 s interval — QUIC idle timeout is 600 s, no need to ping every 60s
             try:
                 network = raw_host.get_network()
                 connected_peers = set()
@@ -775,11 +775,14 @@ class Peer:
                         if any(not getattr(c, "is_closed", False) for c in conns_list):
                             connected_peers.add(peer_id)
 
-                # Run pings concurrently without a strict cap. Trio handles thousands of
-                # tasks easily, and overlapping pings are prevented by tracking in-flight peers.
-                # If a ping takes 70s (library timeout), it will simply be skipped in the next 60s cycle.
+                # Cap the number of concurrent pings to avoid a cancellation storm.
+                # With 150 high_watermark, pinging all at once means 150 concurrent
+                # trio.fail_after timeouts firing simultaneously — each one creates
+                # an Exception object and burns CPU. Stagger them in batches.
                 if not hasattr(self, "_inflight_pings"):
                     self._inflight_pings = set()
+
+                MAX_CONCURRENT_PINGS = 20  # process 20 at a time
 
                 async def _ping_tracked(peer_id: Any) -> None:
                     if peer_id in self._inflight_pings:
@@ -790,9 +793,18 @@ class Peer:
                     finally:
                         self._inflight_pings.discard(peer_id)
 
-                for peer_id in connected_peers:
-                    if peer_id not in self._inflight_pings:
-                        self._nursery.start_soon(_ping_tracked, peer_id)
+                peers_to_ping = [
+                    p for p in connected_peers if p not in self._inflight_pings
+                ]
+                # Launch in small batches with a short sleep between batches
+                # to spread the timeout expirations over time
+                for i in range(0, len(peers_to_ping), MAX_CONCURRENT_PINGS):
+                    batch = peers_to_ping[i:i + MAX_CONCURRENT_PINGS]
+                    for peer_id in batch:
+                        if peer_id not in self._inflight_pings:
+                            self._nursery.start_soon(_ping_tracked, peer_id)
+                    if i + MAX_CONCURRENT_PINGS < len(peers_to_ping):
+                        await trio.sleep(2.0)  # 2s gap between batches
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
 
