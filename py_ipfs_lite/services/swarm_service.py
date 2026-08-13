@@ -22,16 +22,27 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
 
     raw_host = typing.cast(typing.Any, getattr(peer.host, "_host", peer.host))
     network = raw_host.get_network()
+    peerstore = raw_host.get_peerstore()
     result = []
     for peer_id, conns in network.connections.items():
+        # Only include peers with at least one genuinely open connection
+        conn_list = conns if isinstance(conns, list) else [conns]
+        if not any(not getattr(c, "is_closed", False) for c in conn_list):
+            continue
         pid_str = peer_id.to_base58()
+        # Pull real multiaddresses from peerstore so callers can dial back
+        try:
+            addrs = [str(a) for a in peerstore.addrs(peer_id)]
+        except Exception:
+            addrs = []
         result.append(
             {
                 "peer": pid_str,
-                "addrs": [],
+                "addrs": addrs,
             }
         )
     return SwarmPeers(count=len(result), peers=result)
+
 
 
 async def count_connections(peer: Peer) -> int:

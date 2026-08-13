@@ -406,6 +406,8 @@ class Peer:
         self.connection_tracker: ConnectionStatsTracker | None = None
         self._auto_connector = None
         self._connection_pruner = None
+        # Track consecutive ping failures per peer; close only after threshold
+        self._ping_failures: dict[str, int] = {}
 
     @classmethod
     async def new(
@@ -811,6 +813,7 @@ class Peer:
 
         from libp2p.abc import IHost
 
+        peer_id_str = peer_id.to_base58()
         ping_service = PingService(cast(IHost, raw_host))
         try:
             # IMPORTANT: use fail_after, NOT move_on_after.  move_on_after
@@ -825,18 +828,32 @@ class Peer:
             with trio.fail_after(timeout):
                 await ping_service.ping(peer_id, ping_amt=1)
                 if self.connection_tracker:
-                    self.connection_tracker.mark_ping_completed(peer_id.to_base58())
+                    self.connection_tracker.mark_ping_completed(peer_id_str)
+            # Ping succeeded — clear consecutive failure counter
+            self._ping_failures.pop(peer_id_str, None)
         except Exception as e:
-            # Log the failure but do NOT clear peerstore addresses.
-            # Clearing addresses on a transient ping failure means we can
-            # never reconnect to the peer; just close the dead connection and
-            # let the caller reconnect if needed.
-            logger.debug(f"Keep-alive ping failed for {peer_id}: {e}")
-            try:
-                network = raw_host.get_network()
-                await network.close_peer(peer_id)
-            except Exception:
-                pass
+            # Don't close the connection on the first (or even second) ping
+            # failure.  Identify failures, transient resets, and slow peers
+            # all cause spurious ping errors; closing immediately creates a
+            # reconnect churn loop.  Only close after _PING_FAIL_THRESHOLD
+            # consecutive failures, which indicates a truly dead connection.
+            _PING_FAIL_THRESHOLD = 3
+            failures = self._ping_failures.get(peer_id_str, 0) + 1
+            self._ping_failures[peer_id_str] = failures
+            logger.debug(
+                f"Keep-alive ping failed for {peer_id} "
+                f"(consecutive failures: {failures}/{_PING_FAIL_THRESHOLD}): {e}"
+            )
+            if failures >= _PING_FAIL_THRESHOLD:
+                logger.info(
+                    f"Closing connection to {peer_id} after {failures} consecutive ping failures"
+                )
+                self._ping_failures.pop(peer_id_str, None)
+                try:
+                    network = raw_host.get_network()
+                    await network.close_peer(peer_id)
+                except Exception:
+                    pass
 
     async def __aenter__(self) -> "Peer":
         if not self._started:
