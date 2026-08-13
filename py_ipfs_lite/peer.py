@@ -700,11 +700,10 @@ class Peer:
                 raw_swarm.connection_config.low_watermark = (
                     self.config.conn_mgr_low_water
                 )
-                # Hard cap: high_watermark + small burst buffer.
-                # Formula was previously max(high_water*3, 600)=600 which
-                # defeated the purpose of setting high_water=150.
+                # Hard cap: high_watermark + small burst buffer (25).
+                # With high_water=60, cap is 85 connections total.
                 raw_swarm.connection_config.max_connections = (
-                    self.config.conn_mgr_high_water + 50
+                    self.config.conn_mgr_high_water + 25
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
