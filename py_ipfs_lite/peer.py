@@ -815,9 +815,12 @@ class Peer:
         Identify timeouts (common on busy peers) triggered close_peer(),
         which caused reconnects, which caused more Identify timeouts.
 
-        We use ``move_on_after`` (not ``fail_after``) so a timed-out ping
-        is simply skipped without raising — the ping stream is still cleaned
-        up by PingService's exception path when the cancel scope fires.
+        IMPORTANT: We must use ``fail_after`` (not ``move_on_after``).
+        ``move_on_after`` raises ``trio.Cancelled`` internally, which inherits
+        from ``BaseException`` and bypasses the ``except Exception`` cleanup
+        block in ``PingService``. This causes the stream to be orphaned and
+        leaked forever. ``fail_after`` raises ``trio.TooSlowError`` (an
+        ``Exception``), which correctly triggers ``stream.reset()``.
         """
         from libp2p.host.ping import PingService
 
@@ -831,10 +834,12 @@ class Peer:
         peer_id_str = peer_id.to_base58()
         ping_service = PingService(cast(IHost, raw_host))
         try:
-            with trio.move_on_after(timeout):
+            with trio.fail_after(timeout):
                 await ping_service.ping(peer_id, ping_amt=1)
                 if self.connection_tracker:
                     self.connection_tracker.mark_ping_completed(peer_id_str)
+        except trio.TooSlowError:
+            logger.debug(f"Keep-alive ping timed out for {peer_id} (ignored)")
         except Exception as e:
             # Log at debug — ping failure is not actionable, connection stays open.
             logger.debug(f"Keep-alive ping failed for {peer_id} (ignored): {e}")
