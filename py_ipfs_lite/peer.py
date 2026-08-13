@@ -406,8 +406,6 @@ class Peer:
         self.connection_tracker: ConnectionStatsTracker | None = None
         self._auto_connector = None
         self._connection_pruner = None
-        # Track consecutive ping failures per peer; close only after threshold
-        self._ping_failures: dict[str, int] = {}
 
     @classmethod
     async def new(
@@ -730,25 +728,35 @@ class Peer:
             raise
 
     async def _keep_alive_loop(self) -> None:
-        """Periodically ping all connected peers to keep idle connections alive."""
+        """Periodically ping all connected peers to keep idle connections alive.
+
+        Ping is a pure keepalive heartbeat — it does NOT gate connection
+        liveness.  Dead connections are evicted by QUIC's 600 s idle timeout
+        (set in ``_create_host``).  Removing connections on ping failure caused
+        a churn loop: Identify timeouts (common on busy peers) counted as ping
+        failures, which closed the connection, which triggered a reconnect,
+        which caused another Identify timeout, etc.
+
+        The interval is 60 s (not 15 s) so that pinging 200+ peers with a
+        concurrency cap of 20 and a 5 s timeout per ping finishes comfortably
+        within one cycle without queuing up cascading failures.
+        """
         raw_host = getattr(self.host, "_host", self.host)
         if raw_host is None:
             return
 
         while True:
-            await trio.sleep(15.0)  # Ping every 15 seconds to beat 30s idle timeout
+            await trio.sleep(60.0)  # 60 s interval — QUIC idle timeout is 600 s
             try:
                 network = raw_host.get_network()
                 connected_peers = set()
                 if hasattr(network, "connections"):
                     for peer_id, conns in network.connections.items():
-                        if any(not c.is_closed for c in conns):
+                        conns_list = conns if isinstance(conns, list) else [conns]
+                        if any(not getattr(c, "is_closed", False) for c in conns_list):
                             connected_peers.add(peer_id)
 
-                # Cap concurrency so a large post-crash reconnect burst
-                # (e.g. auto-connector bringing in 300+ peers at once) doesn't
-                # open hundreds of QUIC streams simultaneously and trigger
-                # "write() after reset()" cascades.
+                # Cap concurrency: 200 peers / 20 slots * 5 s timeout = 50 s << 60 s
                 _MAX_CONCURRENT_PINGS = 20
                 sem = trio.Semaphore(_MAX_CONCURRENT_PINGS)
 
@@ -798,12 +806,19 @@ class Peer:
             except Exception as e:
                 logger.debug(f"Stream leak monitor error: {e}")
 
-    async def _ping_peer(self, peer_id: Any, timeout: float = 10.0) -> None:
-        # Create a fresh PingService for every call so that PingService's
-        # internal _outbound_streams cache is always empty.  Reusing a single
-        # PingService instance caused an AttributeError on the second keep-alive
-        # cycle: ping_iter tried to call stream.is_closed() on the cached
-        # NetStream object, which does not have that attribute.
+    async def _ping_peer(self, peer_id: Any, timeout: float = 5.0) -> None:
+        """Send a single keepalive ping to *peer_id*.
+
+        A ping failure is completely ignored — the connection is left open.
+        Dead connections are detected by QUIC's 600 s idle timeout, not by
+        us.  Closing connections on ping failure caused a churn loop because
+        Identify timeouts (common on busy peers) triggered close_peer(),
+        which caused reconnects, which caused more Identify timeouts.
+
+        We use ``move_on_after`` (not ``fail_after``) so a timed-out ping
+        is simply skipped without raising — the ping stream is still cleaned
+        up by PingService's exception path when the cancel scope fires.
+        """
         from libp2p.host.ping import PingService
 
         raw_host = getattr(self.host, "_host", self.host)
@@ -816,44 +831,13 @@ class Peer:
         peer_id_str = peer_id.to_base58()
         ping_service = PingService(cast(IHost, raw_host))
         try:
-            # IMPORTANT: use fail_after, NOT move_on_after.  move_on_after
-            # swallows the cancellation when the timeout fires, so a ping to a
-            # slow peer is silently abandoned and its stream is orphaned (it
-            # is never closed/reset by PingService, whose cleanup only runs on
-            # a *raised* exception).  Those orphaned streams accumulate as
-            # resource leaks.  fail_after raises TooSlowError instead, which
-            # triggers the close_peer cleanup below: closing the connection
-            # resets every stream on it (including the orphaned ping stream),
-            # so the stream tracker counts them as closed.
-            with trio.fail_after(timeout):
+            with trio.move_on_after(timeout):
                 await ping_service.ping(peer_id, ping_amt=1)
                 if self.connection_tracker:
                     self.connection_tracker.mark_ping_completed(peer_id_str)
-            # Ping succeeded — clear consecutive failure counter
-            self._ping_failures.pop(peer_id_str, None)
         except Exception as e:
-            # Don't close the connection on the first (or even second) ping
-            # failure.  Identify failures, transient resets, and slow peers
-            # all cause spurious ping errors; closing immediately creates a
-            # reconnect churn loop.  Only close after _PING_FAIL_THRESHOLD
-            # consecutive failures, which indicates a truly dead connection.
-            _PING_FAIL_THRESHOLD = 3
-            failures = self._ping_failures.get(peer_id_str, 0) + 1
-            self._ping_failures[peer_id_str] = failures
-            logger.debug(
-                f"Keep-alive ping failed for {peer_id} "
-                f"(consecutive failures: {failures}/{_PING_FAIL_THRESHOLD}): {e}"
-            )
-            if failures >= _PING_FAIL_THRESHOLD:
-                logger.info(
-                    f"Closing connection to {peer_id} after {failures} consecutive ping failures"
-                )
-                self._ping_failures.pop(peer_id_str, None)
-                try:
-                    network = raw_host.get_network()
-                    await network.close_peer(peer_id)
-                except Exception:
-                    pass
+            # Log at debug — ping failure is not actionable, connection stays open.
+            logger.debug(f"Keep-alive ping failed for {peer_id} (ignored): {e}")
 
     async def __aenter__(self) -> "Peer":
         if not self._started:
