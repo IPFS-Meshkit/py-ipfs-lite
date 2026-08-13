@@ -756,16 +756,24 @@ class Peer:
                         if any(not getattr(c, "is_closed", False) for c in conns_list):
                             connected_peers.add(peer_id)
 
-                # Cap concurrency: 200 peers / 20 slots * 5 s timeout = 50 s << 60 s
-                _MAX_CONCURRENT_PINGS = 20
-                sem = trio.Semaphore(_MAX_CONCURRENT_PINGS)
+                # Run pings concurrently without a strict cap. Trio handles thousands of
+                # tasks easily, and overlapping pings are prevented by tracking in-flight peers.
+                # If a ping takes 70s (library timeout), it will simply be skipped in the next 60s cycle.
+                if not hasattr(self, "_inflight_pings"):
+                    self._inflight_pings = set()
 
-                async def _ping_with_sem(peer_id: Any) -> None:
-                    async with sem:
+                async def _ping_tracked(peer_id: Any) -> None:
+                    if peer_id in self._inflight_pings:
+                        return
+                    self._inflight_pings.add(peer_id)
+                    try:
                         await self._ping_peer(peer_id)
+                    finally:
+                        self._inflight_pings.discard(peer_id)
 
                 for peer_id in connected_peers:
-                    self._nursery.start_soon(_ping_with_sem, peer_id)
+                    if peer_id not in self._inflight_pings:
+                        self._nursery.start_soon(_ping_tracked, peer_id)
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
 
