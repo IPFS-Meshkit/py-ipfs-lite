@@ -716,6 +716,27 @@ class Peer:
                     self.config.conn_mgr_high_water + 10
                 )
 
+                # Update the inbound limiter to match the new caps.
+                # _inbound_limiter was initialized from the default config (max=300,
+                # min=10 → 290 inbound slots). Update it to the real limit so the
+                # atomic acquire_nowait() gate actually fires at the right threshold.
+                if hasattr(raw_swarm, "_inbound_limiter"):
+                    max_inbound = max(
+                        1,
+                        raw_swarm.connection_config.max_connections
+                        - raw_swarm.connection_config.min_connections,
+                    )
+                    raw_swarm._inbound_limiter = (
+                        __import__("trio").CapacityLimiter(max_inbound)
+                    )
+                    import logging as _logging
+                    _logging.getLogger(__name__).info(
+                        "Updated _inbound_limiter to %d slots (max=%d, min=%d)",
+                        max_inbound,
+                        raw_swarm.connection_config.max_connections,
+                        raw_swarm.connection_config.min_connections,
+                    )
+
                 if hasattr(raw_swarm, "auto_connector"):
                     # 30s interval — frequent enough to replace dropped peers
                     raw_swarm.auto_connector.auto_connect_interval = 30.0
