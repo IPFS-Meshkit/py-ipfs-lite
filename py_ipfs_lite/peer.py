@@ -714,8 +714,8 @@ class Peer:
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
-                    # Run auto-connector every 20s to find peers faster
-                    raw_swarm.auto_connector.auto_connect_interval = 20.0
+                    # 30s interval — frequent enough to replace dropped peers
+                    raw_swarm.auto_connector.auto_connect_interval = 30.0
 
             maddrs = [
                 Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs
@@ -908,6 +908,35 @@ class Peer:
                         len(leaked),
                         sorted({r.peer_id for r in leaked}),
                     )
+                    # Actively reset streams open longer than threshold with no
+                    # protocol negotiated — these are zombie QUIC streams where
+                    # stream.reset() was called but aioquic held on to them.
+                    raw_host = getattr(self.host, "_host", self.host)
+                    if raw_host is not None:
+                        network = raw_host.get_network()
+                        if hasattr(network, "connections"):
+                            for peer_id_obj, conns in list(network.connections.items()):
+                                conns_list = (
+                                    conns if isinstance(conns, list) else [conns]
+                                )
+                                for conn in conns_list:
+                                    muxed = getattr(conn, "muxed_conn", conn)
+                                    streams = getattr(muxed, "streams", {})
+                                    for sid, stream in list(streams.items()):
+                                        proto = getattr(stream, "_protocol", None)
+                                        if proto is not None:
+                                            continue  # Protocol negotiated, leave alone
+                                        open_s = getattr(stream, "open_seconds", None)
+                                        if open_s is None:
+                                            created = getattr(stream, "_created_at", None)
+                                            if created:
+                                                import time as _t
+                                                open_s = _t.monotonic() - created
+                                        if open_s is not None and open_s > threshold:
+                                            try:
+                                                await stream.reset()
+                                            except Exception:
+                                                pass
                 elif logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
                         "Resource-leak sweep: no leaks (open streams: %d)",
@@ -915,6 +944,7 @@ class Peer:
                     )
             except Exception as e:
                 logger.debug(f"Stream leak monitor error: {e}")
+
 
     async def _ping_peer(self, peer_id: Any, timeout: float = 5.0) -> None:
         """Send a single keepalive ping to *peer_id*.
