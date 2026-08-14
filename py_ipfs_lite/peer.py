@@ -435,9 +435,13 @@ class Peer:
             # "/tls/1.0.0": TLSTransport(self._host_key),
         }
         has_quic = any("quic" in str(a) for a in maddrs)
-        # Use a 600-second idle timeout to match go-libp2p defaults.
-        # 30s (the old default) caused connections to die while idle between DHT queries.
-        quic_cfg = QUICTransportConfig(idle_timeout=600.0) if has_quic else None
+        # QUIC idle timeout = 90s.
+        # DHT query connections open, query (~5-10s), then go idle.
+        # At 600s they accumulate: ~10 new DHT dials/min × 10min = 100 connections.
+        # At 90s: idle DHT query connections close quickly, capping the total.
+        # auto-connector connections get a YAMUX/QUIC ping every 75s which
+        # resets the idle timer, so persistent connections survive fine.
+        quic_cfg = QUICTransportConfig(idle_timeout=90.0) if has_quic else None
         import os
 
         from py_ipfs_lite.config import BlockStoreType
@@ -744,7 +748,7 @@ class Peer:
             # floods the QUIC layer with Duplicate CRYPTO data (retransmitted
             # Initial packets) — each requiring AEAD decryption → 100% CPU.
             # Instead, use max_connections for a hard QUIC-level cap and let
-            # the 600s idle timeout handle natural cleanup.
+            # the 90s idle timeout handle natural cleanup.
             # self._nursery.start_soon(self._connection_pruner_loop)
 
             # Resource-leak monitoring: periodically sweep open streams and
@@ -761,7 +765,7 @@ class Peer:
         """Periodically ping all connected peers to keep idle connections alive.
 
         Ping is a pure keepalive heartbeat — it does NOT gate connection
-        liveness.  Dead connections are evicted by QUIC's 600 s idle timeout
+        liveness.  Dead connections are evicted by QUIC's 90 s idle timeout
         (set in ``_create_host``).  Removing connections on ping failure caused
         a churn loop: Identify timeouts (common on busy peers) counted as ping
         failures, which closed the connection, which triggered a reconnect,
@@ -776,7 +780,7 @@ class Peer:
             return
 
         while True:
-            await trio.sleep(120.0)  # 120 s interval — QUIC idle timeout is 600 s, no need to ping every 60s
+            await trio.sleep(75.0)  # ping every 75s — just under the 90s QUIC idle timeout
             try:
                 network = raw_host.get_network()
                 connected_peers = set()
