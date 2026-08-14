@@ -500,13 +500,22 @@ class Peer:
                 for a in self.config.announce_addrs
             ]
 
+        from libp2p.network.config import ConnectionConfig
+
+        swarm_conn_cfg = ConnectionConfig(
+            low_watermark=self.config.conn_mgr_low_water,
+            high_watermark=self.config.conn_mgr_high_water,
+            max_connections=rcmgr_max,
+        )
+
         raw_host = new_host(
             key_pair=self._host_key,
             listen_addrs=maddrs,
             sec_opt=sec_opt,  # type: ignore[arg-type]
             enable_quic=has_quic,
             enable_mDNS=self.config.enable_mdns,
-            connection_config=quic_cfg,
+            connection_config=swarm_conn_cfg,
+            quic_transport_opt=quic_cfg,
             peerstore_opt=peerstore_opt,
             resource_manager=resource_manager,
             announce_addrs=announce_maddrs,
