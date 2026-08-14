@@ -435,13 +435,12 @@ class Peer:
             # "/tls/1.0.0": TLSTransport(self._host_key),
         }
         has_quic = any("quic" in str(a) for a in maddrs)
-        # QUIC idle timeout = 90s.
-        # DHT query connections open, query (~5-10s), then go idle.
-        # At 600s they accumulate: ~10 new DHT dials/min × 10min = 100 connections.
-        # At 90s: idle DHT query connections close quickly, capping the total.
-        # auto-connector connections get a YAMUX/QUIC ping every 75s which
-        # resets the idle timer, so persistent connections survive fine.
-        quic_cfg = QUICTransportConfig(idle_timeout=90.0) if has_quic else None
+        # QUIC idle timeout = 600s to match go-libp2p defaults.
+        # DHT query connections that go idle are cleaned up by the connection
+        # manager once we hit the high watermark. The random walk is now
+        # rate-limited (300s interval, 3 concurrent) so connection accumulation
+        # from DHT queries is bounded.
+        quic_cfg = QUICTransportConfig(idle_timeout=600.0) if has_quic else None
         import os
 
         from py_ipfs_lite.config import BlockStoreType
@@ -765,8 +764,8 @@ class Peer:
         """Periodically ping all connected peers to keep idle connections alive.
 
         Ping is a pure keepalive heartbeat — it does NOT gate connection
-        liveness.  Dead connections are evicted by QUIC's 90 s idle timeout
-        (set in ``_create_host``).  Removing connections on ping failure caused
+        liveness.  Dead connections are evicted by QUIC's 600 s idle timeout
+        (set in ``_create_host``).
         a churn loop: Identify timeouts (common on busy peers) counted as ping
         failures, which closed the connection, which triggered a reconnect,
         which caused another Identify timeout, etc.
