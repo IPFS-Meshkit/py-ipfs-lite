@@ -5,7 +5,7 @@ It provides the core features of IPFS (Blockstore, Bitswap, DHT, IPNI, IPNS, and
 
 It is designed to be highly interoperable with standard IPFS implementations like Kubo and go-ipfs-lite, natively supporting `dag-cbor`, CARv1 file import/export, Bitswap streaming, and more.
 
-## Features
+### Features
 
 - **Embedded IPFS Node:** Run a complete IPFS node purely in Python using `trio` or standard async.
 - **Bitswap Protocol:** Interoperate and exchange blocks directly with Kubo daemons.
@@ -82,7 +82,7 @@ curl -X POST -F file=@test.txt http://127.0.0.1:5001/api/v0/add
 curl -X POST "http://127.0.0.1:5001/api/v0/dag/get?arg=bafy..."
 ```
 
-## What's Next
+### What's Next
 
 | I want to…                                                      | Go to…                                                                                                                                |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
