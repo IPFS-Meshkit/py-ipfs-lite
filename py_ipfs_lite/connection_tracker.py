@@ -48,6 +48,8 @@ class PeerStreamStats(BaseModel):
     by_protocol: dict[str, int] = {}
 
 
+import weakref
+
 @dataclass
 class StreamRecord:
     """Live record of a single network stream, keyed by its object id."""
@@ -55,7 +57,7 @@ class StreamRecord:
     key: str
     peer_id: str
     opened_at: float
-    stream_ref: Any
+    _stream_ref: Any
     protocol: str | None = None
     direction: str = "unknown"
     stream_id: str | None = None
@@ -63,6 +65,12 @@ class StreamRecord:
     duration: float | None = None
     was_reset: bool = False
     suspected_leak: bool = False
+
+    @property
+    def stream_ref(self) -> Any:
+        if callable(self._stream_ref):
+            return self._stream_ref()
+        return self._stream_ref
 
 
 def _extract_peer_id(conn: INetConn) -> str | None:
@@ -205,11 +213,16 @@ class ConnectionStatsTracker(INotifee):
         key = self._stream_key(stream)
         peer_id = _stream_peer_id(stream) or "unknown"
 
+        try:
+            stream_ref_val = weakref.ref(stream)
+        except Exception:
+            stream_ref_val = stream
+
         record = StreamRecord(
             key=key,
             peer_id=peer_id,
             opened_at=time.monotonic(),
-            stream_ref=stream,
+            _stream_ref=stream_ref_val,
             protocol=_stream_protocol(stream),
             direction=_stream_direction(stream),
             stream_id=_stream_id(stream),
@@ -251,7 +264,7 @@ class ConnectionStatsTracker(INotifee):
                 key=key,
                 peer_id=_stream_peer_id(stream) or "unknown",
                 opened_at=0.0,
-                stream_ref=stream,
+                _stream_ref=None,
             )
         else:
             # Protocol/direction are negotiated *after* the opened_stream event
@@ -408,6 +421,9 @@ class ConnectionStatsTracker(INotifee):
           ``closed_stream`` events).
         """
         ref = record.stream_ref
+        if ref is None:
+            # Underlying stream was already garbage-collected
+            return True
 
         # 1) The stream object itself reports closed.
         try:
