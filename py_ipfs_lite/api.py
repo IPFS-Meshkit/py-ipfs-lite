@@ -554,6 +554,68 @@ async def debug_routing_table(request: Request) -> Any:
     return JSONResponse(content={"count": res.count, "peers": res.peers})
 
 
+@app.get("/api/v0/debug/memory")
+async def debug_memory(request: Request) -> Any:
+    """Detailed live memory and object introspection endpoint."""
+    import gc
+    import sys
+    from collections import Counter
+
+    gc.collect()
+
+    peer: Peer = request.app.state.peer
+    counts: Counter = Counter()
+    sizes: Counter = Counter()
+    all_objs = gc.get_objects()
+    for obj in all_objs:
+        t_name = f"{type(obj).__module__}.{type(obj).__name__}"
+        counts[t_name] += 1
+        try:
+            sizes[t_name] += sys.getsizeof(obj)
+        except Exception:
+            pass
+
+    top_by_count = [
+        {"type": t, "count": c, "size_mb": round(sizes[t] / (1024 * 1024), 2)}
+        for t, c in counts.most_common(50)
+    ]
+    top_by_size = [
+        {"type": t, "count": counts[t], "size_mb": round(s / (1024 * 1024), 2)}
+        for t, s in sorted(sizes.items(), key=lambda x: x[1], reverse=True)[:50]
+    ]
+
+    # Subsystem inspect
+    subsystems: dict[str, Any] = {}
+    try:
+        raw_swarm = peer.host._host.get_network()  # type: ignore
+        subsystems["swarm_connections_len"] = len(raw_swarm.connections) if hasattr(raw_swarm, "connections") else None
+        subsystems["swarm_listeners_len"] = len(raw_swarm.listeners) if hasattr(raw_swarm, "listeners") else None
+        if hasattr(raw_swarm, "transport_manager"):
+            tm = raw_swarm.transport_manager
+            subsystems["transports"] = [type(t).__name__ for t in getattr(tm, "transports", {}).values()]
+    except Exception as e:
+        subsystems["swarm_err"] = str(e)
+
+    try:
+        ps = peer.host.get_peerstore()
+        subsystems["peerstore_peers_count"] = len(ps.peer_ids())
+        if hasattr(ps, "peer_data_map"):
+            subsystems["peer_data_map_len"] = len(ps.peer_data_map)
+        if hasattr(ps, "peer_record_map"):
+            subsystems["peer_record_map_len"] = len(ps.peer_record_map)
+    except Exception as e:
+        subsystems["peerstore_err"] = str(e)
+
+    return JSONResponse(
+        content={
+            "total_objects": len(all_objs),
+            "top_by_count": top_by_count,
+            "top_by_size": top_by_size,
+            "subsystems": subsystems,
+        }
+    )
+
+
 @app.post("/api/v0/dht/provide")
 async def dht_provide(
     request: Request,
