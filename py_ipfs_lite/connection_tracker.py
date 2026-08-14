@@ -130,11 +130,34 @@ def _stream_id(stream: INetStream) -> str | None:
         return None
 
 
-def _extract_transport_info(conn: INetConn) -> tuple[str | None, str | None, str | None]:
-    """Extract (transport, security, muxer) from connection."""
-    transport = None
-    security = None
-    muxer = None
+def _extract_conn_details(conn: INetConn) -> dict[str, Any]:
+    """Extract multiaddr, direction, transport, security, and muxer from a connection."""
+    transport = "unknown"
+    security = "unknown"
+    muxer = "unknown"
+    direction = "unknown"
+    remote_addr = None
+
+    try:
+        dir_val = getattr(conn, "direction", getattr(conn, "_direction", None))
+        if dir_val is not None:
+            if hasattr(dir_val, "name"):
+                direction = dir_val.name.lower()
+            else:
+                direction = str(dir_val).lower()
+    except Exception:
+        pass
+
+    try:
+        maddr = getattr(conn, "remote_addr", getattr(conn, "multiaddr", None))
+        if maddr is None:
+            raw_c = getattr(getattr(conn, "muxed_conn", None), "_raw_conn", None)
+            maddr = getattr(raw_c, "multiaddr", None)
+        if maddr is not None:
+            remote_addr = str(maddr)
+    except Exception:
+        pass
+
     try:
         muxed_conn = getattr(conn, "muxed_conn", None)
         if muxed_conn is not None:
@@ -148,8 +171,16 @@ def _extract_transport_info(conn: INetConn) -> tuple[str | None, str | None, str
             elif "Mplex" in muxer_name:
                 muxer = "mplex"
 
+            sec_conn = getattr(muxed_conn, "secured_conn", None)
+            if sec_conn is not None:
+                sec_name = type(sec_conn).__name__
+                if "Noise" in sec_name:
+                    security = "Noise"
+                elif "TLS" in sec_name:
+                    security = "tls"
+
         raw_conn = getattr(muxed_conn, "_raw_conn", getattr(conn, "_raw_conn", None))
-        if raw_conn is not None and transport is None:
+        if raw_conn is not None and transport == "unknown":
             t_name = type(raw_conn).__name__
             if "TCP" in t_name or "Socket" in t_name:
                 transport = "tcp"
@@ -159,7 +190,24 @@ def _extract_transport_info(conn: INetConn) -> tuple[str | None, str | None, str
                 transport = "quic-v1"
     except Exception:
         pass
-    return transport, security, muxer
+
+    return {
+        "direction": direction,
+        "transport": transport,
+        "security": security,
+        "muxer": muxer,
+        "remote_addr": remote_addr,
+    }
+
+
+def _extract_transport_info(conn: INetConn) -> tuple[str | None, str | None, str | None]:
+    """Extract (transport, security, muxer) from connection."""
+    details = _extract_conn_details(conn)
+    return (
+        details["transport"] if details["transport"] != "unknown" else None,
+        details["security"] if details["security"] != "unknown" else None,
+        details["muxer"] if details["muxer"] != "unknown" else None,
+    )
 
 
 class ConnectionStatsTracker(INotifee):
@@ -178,7 +226,7 @@ class ConnectionStatsTracker(INotifee):
         # Connection lifecycle counters and metrics
         self.total_connected_events: int = 0
         self.total_disconnected_events: int = 0
-        self._conn_start_times: dict[int, float] = {}
+        self._conn_meta: dict[int, dict[str, Any]] = {}
         self.recent_disconnections: deque[dict[str, Any]] = deque(maxlen=500)
 
         # Keys of streams that were already finalized (closed).  Guards against
@@ -254,7 +302,18 @@ class ConnectionStatsTracker(INotifee):
         now_mono = time.monotonic()
         now_ts = self._now()
 
-        self._conn_start_times[id(conn)] = now_mono
+        conn_meta = _extract_conn_details(conn)
+        conn_meta["peer_id"] = peer_id
+        conn_meta["start_mono"] = now_mono
+        conn_meta["connected_at"] = now_ts
+        conn_meta["streams_served"] = 0
+        conn_meta["protocols"] = set()
+
+        self._conn_meta[id(conn)] = conn_meta
+        muxed_conn = getattr(conn, "muxed_conn", None)
+        if muxed_conn is not None:
+            self._conn_meta[id(muxed_conn)] = conn_meta
+
         self.total_connected_events += 1
 
         stats = self.stats.setdefault(peer_id, PeerConnectionStats(peer_id=peer_id))
@@ -264,19 +323,20 @@ class ConnectionStatsTracker(INotifee):
             stats.first_connected_at = now_ts
         stats.last_connected_at = now_ts
 
-        transport, security, muxer = _extract_transport_info(conn)
-        if transport:
-            stats.transport = transport
-        if security:
-            stats.security = security
-        if muxer:
-            stats.muxer = muxer
+        if conn_meta["transport"] != "unknown":
+            stats.transport = conn_meta["transport"]
+        if conn_meta["security"] != "unknown":
+            stats.security = conn_meta["security"]
+        if conn_meta["muxer"] != "unknown":
+            stats.muxer = conn_meta["muxer"]
 
         logger.debug(
-            "notifee: peer connected: %s (conns: %d, total: %d)",
+            "notifee: peer connected: %s (conns: %d, total: %d, dir: %s, transport: %s)",
             peer_id,
             stats.current_connections,
             self.total_connected_events,
+            conn_meta["direction"],
+            conn_meta["transport"],
         )
 
     async def disconnected(self, network: INetwork, conn: INetConn) -> None:
@@ -285,8 +345,13 @@ class ConnectionStatsTracker(INotifee):
         now_mono = time.monotonic()
         now_ts = self._now()
 
-        start_time = self._conn_start_times.pop(id(conn), None)
-        duration = (now_mono - start_time) if start_time is not None else None
+        conn_meta = self._conn_meta.pop(id(conn), None)
+        muxed_conn = getattr(conn, "muxed_conn", None)
+        if muxed_conn is not None:
+            self._conn_meta.pop(id(muxed_conn), None)
+
+        start_mono = conn_meta.get("start_mono") if conn_meta else None
+        duration = (now_mono - start_mono) if start_mono is not None else None
 
         self.total_disconnected_events += 1
 
@@ -295,25 +360,46 @@ class ConnectionStatsTracker(INotifee):
             stats.current_connections = max(0, stats.current_connections - 1)
             stats.last_disconnected_at = now_ts
 
-        transport = stats.transport if stats else None
+        # Determine reasonable root-cause classification hint
+        reason_hint = "remote_closed_or_idle"
+        protos = list(conn_meta.get("protocols", [])) if conn_meta else []
+        streams_served = conn_meta.get("streams_served", 0) if conn_meta else 0
+
+        if duration is not None:
+            if duration < 5.0 and streams_served == 0:
+                reason_hint = "handshake_failed_or_dial_cancelled"
+            elif any("kad" in p for p in protos) and duration < 45.0:
+                reason_hint = "dht_lookup_hop_completed"
+            elif duration >= 590.0:
+                reason_hint = "idle_timeout"
+
         event_record = {
             "peer_id": peer_id,
+            "connected_at": conn_meta.get("connected_at") if conn_meta else None,
             "disconnected_at": now_ts,
             "duration_seconds": round(duration, 3) if duration is not None else None,
-            "transport": transport,
+            "direction": conn_meta.get("direction") if conn_meta else "unknown",
+            "transport": conn_meta.get("transport") if conn_meta else (stats.transport if stats else None),
+            "security": conn_meta.get("security") if conn_meta else (stats.security if stats else None),
+            "muxer": conn_meta.get("muxer") if conn_meta else (stats.muxer if stats else None),
+            "remote_addr": conn_meta.get("remote_addr") if conn_meta else None,
+            "streams_served": streams_served,
+            "protocols": sorted(protos),
+            "reason_hint": reason_hint,
         }
         self.recent_disconnections.append(event_record)
 
         # Prune stream records on the disconnecting connection.
-        conn_muxed_id = id(getattr(conn, "muxed_conn", None))
+        conn_muxed_id = id(muxed_conn) if muxed_conn is not None else 0
         for key, record in list(self.streams.items()):
             if self._record_on_conn(record, conn, conn_muxed_id):
                 self._finalize_record(key, record, now_mono)
 
         logger.debug(
-            "notifee: peer disconnected: %s (duration: %s, total_disconns: %d)",
+            "notifee: peer disconnected: %s (duration: %s, hint: %s, total_disconns: %d)",
             peer_id,
             f"{duration:.2f}s" if duration is not None else "unknown",
+            reason_hint,
             self.total_disconnected_events,
         )
 
@@ -324,13 +410,25 @@ class ConnectionStatsTracker(INotifee):
         self._network = network
 
     def connection_stats_snapshot(self) -> dict[str, Any]:
-        """Snapshot of connection lifecycle metrics for debugging and monitoring."""
+        """Snapshot of rich connection lifecycle metrics for debugging and monitoring."""
         active_conns = 0
+        active_by_transport: dict[str, int] = {}
+        active_by_direction: dict[str, int] = {}
+
         if self._network is not None:
             try:
                 conns_map = getattr(self._network, "connections", {})
                 for c_list in conns_map.values():
-                    active_conns += len(c_list) if isinstance(c_list, list) else 1
+                    if isinstance(c_list, list):
+                        for c in c_list:
+                            active_conns += 1
+                            t_info = _extract_conn_details(c)
+                            t = t_info["transport"]
+                            d = t_info["direction"]
+                            active_by_transport[t] = active_by_transport.get(t, 0) + 1
+                            active_by_direction[d] = active_by_direction.get(d, 0) + 1
+                    else:
+                        active_conns += 1
             except Exception:
                 pass
 
@@ -342,14 +440,43 @@ class ConnectionStatsTracker(INotifee):
         ]
         avg_dur = (sum(durations) / len(durations)) if durations else 0.0
 
+        # Lifespan distribution buckets
+        lifespan_dist = {
+            "under_5s (failed/transient)": sum(1 for d in durations if d < 5.0),
+            "5s_to_35s (DHT query hops)": sum(1 for d in durations if 5.0 <= d < 35.0),
+            "35s_to_2m (short sessions)": sum(1 for d in durations if 35.0 <= d < 120.0),
+            "over_2m (stable peers)": sum(1 for d in durations if d >= 120.0),
+        }
+
+        # Reason hints distribution
+        reasons_dist: dict[str, int] = {}
+        for r in recent:
+            hint = r.get("reason_hint", "unknown")
+            reasons_dist[hint] = reasons_dist.get(hint, 0) + 1
+
+        # Protocol usage summary
+        proto_counts: dict[str, int] = {}
+        for r in recent:
+            for p in r.get("protocols", []):
+                proto_counts[p] = proto_counts.get(p, 0) + 1
+
         return {
             "total_connected_events": self.total_connected_events,
             "total_disconnected_events": self.total_disconnected_events,
             "current_active_connections": active_conns,
             "total_peers_tracked": len(self.stats),
-            "recent_disconnections_count": len(recent),
             "avg_connection_lifespan_seconds": round(avg_dur, 2),
-            "recent_disconnections": recent[-20:],
+            "active_connections_breakdown": {
+                "by_transport": active_by_transport,
+                "by_direction": active_by_direction,
+            },
+            "disconnections_lifespan_distribution": lifespan_dist,
+            "disconnections_reason_breakdown": reasons_dist,
+            "recent_disconnections_count": len(recent),
+            "top_protocols_on_disconnected": dict(
+                sorted(proto_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            ),
+            "recent_disconnections": recent[-25:],
         }
 
     # ------------------------------------------------------------------
@@ -389,6 +516,15 @@ class ConnectionStatsTracker(INotifee):
         peer_stats.by_protocol[proto] = peer_stats.by_protocol.get(proto, 0) + 1
 
         IPFS_STREAMS_OPENED_TOTAL.inc()
+
+        # Link stream activity to parent connection metadata
+        muxed_conn = getattr(stream, "muxed_conn", None)
+        if muxed_conn is not None and id(muxed_conn) in self._conn_meta:
+            conn_meta = self._conn_meta[id(muxed_conn)]
+            conn_meta["streams_served"] += 1
+            if record.protocol:
+                conn_meta["protocols"].add(record.protocol)
+
         logger.debug(
             f"stream opened peer={peer_id} proto={record.protocol} "
             f"dir={record.direction} open_now={peer_stats.current_open}"
