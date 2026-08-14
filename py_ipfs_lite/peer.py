@@ -705,12 +705,12 @@ class Peer:
                 raw_swarm.connection_config.high_watermark = (
                     self.config.conn_mgr_high_water
                 )
-                # Hard cap: high_watermark (100) + burst buffer (50) = 150.
-                # Allows 50 inbound TCP/YAMUX connections above high_water.
-                # With pruner disabled, inbound peers from Kubo can accumulate
-                # up to this limit before QUIC starts rejecting new connections.
+                # Hard cap: high_watermark (40) + burst buffer (10) = 50 total.
+                # Limits inbound TCP/YAMUX from Kubo to 30 on top of the 20
+                # outbound QUIC maintained by auto-connector. Beyond 50 the
+                # Python event loop saturates from concurrent DHT handlers.
                 raw_swarm.connection_config.max_connections = (
-                    self.config.conn_mgr_high_water + 50
+                    self.config.conn_mgr_high_water + 10
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
@@ -833,8 +833,8 @@ class Peer:
         if raw_host is None:
             return
 
-        high = self.config.conn_mgr_high_water
-        low = self.config.conn_mgr_low_water
+        high = 40
+        low = 20
 
         while True:
             await trio.sleep(15.0)
