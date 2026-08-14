@@ -304,6 +304,12 @@ class ConnectionStatsTracker(INotifee):
         }
         self.recent_disconnections.append(event_record)
 
+        # Prune stream records on the disconnecting connection.
+        conn_muxed_id = id(getattr(conn, "muxed_conn", None))
+        for key, record in list(self.streams.items()):
+            if self._record_on_conn(record, conn, conn_muxed_id):
+                self._finalize_record(key, record, now_mono)
+
         logger.debug(
             "notifee: peer disconnected: %s (duration: %s, total_disconns: %d)",
             peer_id,
@@ -803,133 +809,3 @@ class ConnectionStatsTracker(INotifee):
             if self.stats[peer_id].first_ping_at is None:
                 self.stats[peer_id].first_ping_at = now_str
             self.stats[peer_id].last_ping_at = now_str
-
-    async def connected(self, network: INetwork, conn: INetConn) -> None:
-        self._network = network
-        peer_id = _extract_peer_id(conn)
-        if peer_id is None:
-            return
-        now_str = self._now()
-
-        security_type = "unknown"
-        muxer_type = "unknown"
-        transport_type = "unknown"
-
-        try:
-            muxer_conn = getattr(conn, "muxed_conn", None)
-            if muxer_conn is not None:
-                muxer_type = type(muxer_conn).__name__
-                if muxer_type == "QUICConnection":
-                    security_type = "quic-tls"
-                    transport_type = "quic"
-                    muxer_type = "quic-muxer"
-                else:
-                    sec_conn = getattr(muxer_conn, "secured_conn", None)
-                    if sec_conn is not None:
-                        security_type = type(sec_conn).__name__
-                        if security_type == "SecureSession":
-                            if hasattr(sec_conn, "conn"):
-                                if type(sec_conn.conn).__name__ == "TLSReadWriter":
-                                    security_type = "tls"
-                                elif (
-                                    type(sec_conn.conn).__name__
-                                    == "NoiseTransportReadWriter"
-                                ):
-                                    security_type = "Noise"
-
-                        # Unwrap transport
-                        curr = sec_conn
-                        for _ in range(10):
-                            if (
-                                hasattr(curr, "conn")
-                                and curr.conn is not None
-                                and type(curr.conn).__name__ != type(curr).__name__
-                            ):
-                                curr = curr.conn
-                            elif (
-                                hasattr(curr, "raw_conn")
-                                and curr.raw_conn is not None
-                                and type(curr.raw_conn).__name__ != type(curr).__name__
-                            ):
-                                curr = curr.raw_conn
-                            elif (
-                                hasattr(curr, "transport_conn")
-                                and curr.transport_conn is not None
-                                and type(curr.transport_conn).__name__
-                                != type(curr).__name__
-                            ):
-                                curr = curr.transport_conn
-                            elif (
-                                hasattr(curr, "read_writer")
-                                and curr.read_writer is not None
-                                and type(curr.read_writer).__name__
-                                != type(curr).__name__
-                            ):
-                                curr = curr.read_writer
-                            elif (
-                                hasattr(curr, "read_write_closer")
-                                and curr.read_write_closer is not None
-                                and type(curr.read_write_closer).__name__
-                                != type(curr).__name__
-                            ):
-                                curr = curr.read_write_closer
-                            else:
-                                break
-                        transport_type = type(curr).__name__
-                        if transport_type in (
-                            "TCPConnection",
-                            "RawConnection",
-                            "TLSReadWriter",
-                            "NoiseTransportReadWriter",
-                        ):
-                            transport_type = "tcp"
-        except Exception:
-            pass
-
-        if peer_id not in self.stats:
-            self.stats[peer_id] = PeerConnectionStats(
-                peer_id=peer_id,
-                first_connected_at=now_str,
-                security=security_type,
-                muxer=muxer_type,
-                transport=transport_type,
-            )
-
-        stats = self.stats[peer_id]
-        stats.total_connections += 1
-        stats.current_connections += 1
-        stats.last_connected_at = now_str
-        # Update protocols in case they changed
-        stats.security = security_type
-        stats.muxer = muxer_type
-        stats.transport = transport_type
-
-    async def disconnected(self, network: INetwork, conn: INetConn) -> None:
-        self._network = network
-        peer_id = _extract_peer_id(conn)
-        if peer_id is None:
-            return
-        now_str = self._now()
-
-        if peer_id in self.stats:
-            stats = self.stats[peer_id]
-            stats.current_connections = max(0, stats.current_connections - 1)
-            stats.last_disconnected_at = now_str
-
-        # Prune stream records on the disconnecting connection.  libp2p does
-        # not always dispatch a per-stream ``closed_stream`` event when a
-        # connection dies (e.g. a QUIC connection that terminates without
-        # walking its SwarmConn cleanup), so finalize those records here —
-        # otherwise they would live on as phantom leaks until the sweep's
-        # connection-level reconciliation catches up.
-        conn_muxed_id = id(getattr(conn, "muxed_conn", None))
-        now = time.monotonic()
-        for key, record in list(self.streams.items()):
-            if self._record_on_conn(record, conn, conn_muxed_id):
-                self._finalize_record(key, record, now)
-
-    async def listen(self, network: INetwork, multiaddr: "Multiaddr") -> None:
-        pass
-
-    async def listen_close(self, network: INetwork, multiaddr: "Multiaddr") -> None:
-        pass
