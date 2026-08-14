@@ -695,10 +695,7 @@ class Peer:
             raw_swarm = self.host._host.get_network()  # type: ignore[union-attr]
             if hasattr(raw_swarm, "connection_config") and raw_swarm.connection_config:
                 # min_connections: the floor the auto-connector maintains.
-                # Default is 50 which fights our low_watermark=15 pruner:
-                #   pruner evicts to 15 → auto-connector reconnects to 50 → repeat.
-                # Setting min_connections=low_watermark breaks the churn loop.
-                # Validation requires: low_watermark >= min_connections.
+                # Now matching low_water=50 so we aggressively seek 50+ peers.
                 raw_swarm.connection_config.min_connections = (
                     self.config.conn_mgr_low_water
                 )
@@ -708,14 +705,17 @@ class Peer:
                 raw_swarm.connection_config.high_watermark = (
                     self.config.conn_mgr_high_water
                 )
-                # Hard cap: high_watermark + small burst buffer (5).
-                # With high_water=25, cap is 30 connections total.
+                # Hard cap: high_watermark (100) + burst buffer (50) = 150.
+                # Allows 50 inbound TCP/YAMUX connections above high_water.
+                # With pruner disabled, inbound peers from Kubo can accumulate
+                # up to this limit before QUIC starts rejecting new connections.
                 raw_swarm.connection_config.max_connections = (
-                    self.config.conn_mgr_high_water + 5
+                    self.config.conn_mgr_high_water + 50
                 )
 
                 if hasattr(raw_swarm, "auto_connector"):
-                    raw_swarm.auto_connector.auto_connect_interval = 30.0
+                    # Run auto-connector every 20s to find peers faster
+                    raw_swarm.auto_connector.auto_connect_interval = 20.0
 
             maddrs = [
                 Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs
