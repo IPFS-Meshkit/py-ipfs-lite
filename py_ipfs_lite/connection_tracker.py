@@ -149,12 +149,16 @@ def _extract_conn_details(conn: INetConn) -> dict[str, Any]:
         pass
 
     try:
-        maddr = getattr(conn, "remote_addr", getattr(conn, "multiaddr", None))
-        if maddr is None:
-            raw_c = getattr(getattr(conn, "muxed_conn", None), "_raw_conn", None)
-            maddr = getattr(raw_c, "multiaddr", None)
-        if maddr is not None:
-            remote_addr = str(maddr)
+        actual_addrs = getattr(conn, "_actual_transport_addresses", None)
+        if actual_addrs and len(actual_addrs) > 0:
+            remote_addr = str(actual_addrs[0])
+        if remote_addr is None:
+            maddr = getattr(conn, "remote_addr", getattr(conn, "multiaddr", None))
+            if maddr is None:
+                raw_c = getattr(getattr(conn, "muxed_conn", None), "_raw_conn", None)
+                maddr = getattr(raw_c, "multiaddr", None)
+            if maddr is not None:
+                remote_addr = str(maddr)
     except Exception:
         pass
 
@@ -168,8 +172,12 @@ def _extract_conn_details(conn: INetConn) -> dict[str, Any]:
                 muxer = "quic"
             elif "Yamux" in muxer_name:
                 muxer = "yamux"
+                if transport == "unknown":
+                    transport = "tcp"
             elif "Mplex" in muxer_name:
                 muxer = "mplex"
+                if transport == "unknown":
+                    transport = "tcp"
 
             sec_conn = getattr(muxed_conn, "secured_conn", None)
             if sec_conn is not None:
@@ -190,6 +198,22 @@ def _extract_conn_details(conn: INetConn) -> dict[str, Any]:
                 transport = "quic-v1"
     except Exception:
         pass
+
+    # Infer from multiaddr string if still unknown
+    if remote_addr is not None:
+        if "/quic-v1" in remote_addr or "/quic" in remote_addr:
+            transport = "quic-v1"
+            if security == "unknown":
+                security = "tls1.3"
+            if muxer == "unknown":
+                muxer = "quic"
+        elif "/ws" in remote_addr or "/wss" in remote_addr:
+            transport = "websocket"
+        elif "/tcp/" in remote_addr and transport == "unknown":
+            transport = "tcp"
+
+    if muxer in ("yamux", "mplex") and security == "unknown":
+        security = "Noise"
 
     return {
         "direction": direction,
