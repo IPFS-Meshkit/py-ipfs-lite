@@ -1,7 +1,8 @@
-import logging
-import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
+import time
 from typing import Any
 
 from libp2p.abc import INetConn, INetStream, INetwork, INotifee
@@ -129,6 +130,38 @@ def _stream_id(stream: INetStream) -> str | None:
         return None
 
 
+def _extract_transport_info(conn: INetConn) -> tuple[str | None, str | None, str | None]:
+    """Extract (transport, security, muxer) from connection."""
+    transport = None
+    security = None
+    muxer = None
+    try:
+        muxed_conn = getattr(conn, "muxed_conn", None)
+        if muxed_conn is not None:
+            muxer_name = type(muxed_conn).__name__
+            if "QUIC" in muxer_name:
+                transport = "quic-v1"
+                security = "tls1.3"
+                muxer = "quic"
+            elif "Yamux" in muxer_name:
+                muxer = "yamux"
+            elif "Mplex" in muxer_name:
+                muxer = "mplex"
+
+        raw_conn = getattr(muxed_conn, "_raw_conn", getattr(conn, "_raw_conn", None))
+        if raw_conn is not None and transport is None:
+            t_name = type(raw_conn).__name__
+            if "TCP" in t_name or "Socket" in t_name:
+                transport = "tcp"
+            elif "WebSocket" in t_name:
+                transport = "websocket"
+            elif "QUIC" in t_name:
+                transport = "quic-v1"
+    except Exception:
+        pass
+    return transport, security, muxer
+
+
 class ConnectionStatsTracker(INotifee):
     def __init__(self) -> None:
         # The swarm network last seen in a notifee callback.  Its live
@@ -141,6 +174,13 @@ class ConnectionStatsTracker(INotifee):
         # Per-peer lifetime analytics: peer_id -> (sum of durations, count).
         # Bounded by the number of streams, unlike a global ring buffer.
         self._peer_lifetime: dict[str, tuple[float, int]] = {}
+
+        # Connection lifecycle counters and metrics
+        self.total_connected_events: int = 0
+        self.total_disconnected_events: int = 0
+        self._conn_start_times: dict[int, float] = {}
+        self.recent_disconnections: deque[dict[str, Any]] = deque(maxlen=500)
+
         # Keys of streams that were already finalized (closed).  Guards against
         # double-counting when libp2p dispatches a second closed_stream event
         # (or a close event races with the leak-monitor reconciliation).
@@ -203,6 +243,108 @@ class ConnectionStatsTracker(INotifee):
         """Accumulate a closed stream's lifetime into the peer's aggregate."""
         total, count = self._peer_lifetime.get(peer_id, (0.0, 0))
         self._peer_lifetime[peer_id] = (total + duration, count + 1)
+
+    # ------------------------------------------------------------------
+    # Connection lifecycle (INotifee implementation)
+    # ------------------------------------------------------------------
+
+    async def connected(self, network: INetwork, conn: INetConn) -> None:
+        self._network = network
+        peer_id = _extract_peer_id(conn) or "unknown"
+        now_mono = time.monotonic()
+        now_ts = self._now()
+
+        self._conn_start_times[id(conn)] = now_mono
+        self.total_connected_events += 1
+
+        stats = self.stats.setdefault(peer_id, PeerConnectionStats(peer_id=peer_id))
+        stats.total_connections += 1
+        stats.current_connections += 1
+        if stats.first_connected_at is None:
+            stats.first_connected_at = now_ts
+        stats.last_connected_at = now_ts
+
+        transport, security, muxer = _extract_transport_info(conn)
+        if transport:
+            stats.transport = transport
+        if security:
+            stats.security = security
+        if muxer:
+            stats.muxer = muxer
+
+        logger.debug(
+            "notifee: peer connected: %s (conns: %d, total: %d)",
+            peer_id,
+            stats.current_connections,
+            self.total_connected_events,
+        )
+
+    async def disconnected(self, network: INetwork, conn: INetConn) -> None:
+        self._network = network
+        peer_id = _extract_peer_id(conn) or "unknown"
+        now_mono = time.monotonic()
+        now_ts = self._now()
+
+        start_time = self._conn_start_times.pop(id(conn), None)
+        duration = (now_mono - start_time) if start_time is not None else None
+
+        self.total_disconnected_events += 1
+
+        stats = self.stats.get(peer_id)
+        if stats:
+            stats.current_connections = max(0, stats.current_connections - 1)
+            stats.last_disconnected_at = now_ts
+
+        transport = stats.transport if stats else None
+        event_record = {
+            "peer_id": peer_id,
+            "disconnected_at": now_ts,
+            "duration_seconds": round(duration, 3) if duration is not None else None,
+            "transport": transport,
+        }
+        self.recent_disconnections.append(event_record)
+
+        logger.debug(
+            "notifee: peer disconnected: %s (duration: %s, total_disconns: %d)",
+            peer_id,
+            f"{duration:.2f}s" if duration is not None else "unknown",
+            self.total_disconnected_events,
+        )
+
+    async def listen(self, network: INetwork, multiaddr: Multiaddr) -> None:
+        self._network = network
+
+    async def listen_close(self, network: INetwork, multiaddr: Multiaddr) -> None:
+        self._network = network
+
+    def connection_stats_snapshot(self) -> dict[str, Any]:
+        """Snapshot of connection lifecycle metrics for debugging and monitoring."""
+        active_conns = 0
+        if self._network is not None:
+            try:
+                conns_map = getattr(self._network, "connections", {})
+                for c_list in conns_map.values():
+                    active_conns += len(c_list) if isinstance(c_list, list) else 1
+            except Exception:
+                pass
+
+        recent = list(self.recent_disconnections)
+        durations = [
+            item["duration_seconds"]
+            for item in recent
+            if item.get("duration_seconds") is not None
+        ]
+        avg_dur = (sum(durations) / len(durations)) if durations else 0.0
+
+        return {
+            "total_connected_events": self.total_connected_events,
+            "total_disconnected_events": self.total_disconnected_events,
+            "current_active_connections": active_conns,
+            "total_peers_tracked": len(self.stats),
+            "recent_disconnections_count": len(recent),
+            "avg_connection_lifespan_seconds": round(avg_dur, 2),
+            "recent_disconnections": recent[-20:],
+        }
 
     # ------------------------------------------------------------------
     # Stream lifecycle

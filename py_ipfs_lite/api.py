@@ -279,6 +279,24 @@ async def swarm_stream_stats(request: Request) -> Any:
     )
 
 
+@app.post("/api/v0/debug/connection-stats")
+@app.get("/api/v0/debug/connection-stats")
+@app.get("/api/v0/swarm/connection_metrics")
+async def debug_connection_stats(request: Request) -> Any:
+    """
+    Report live connection lifecycle metrics tracked directly via INotifee.
+
+    Returns total connected events, total disconnected events, current active
+    connections, and a rolling log of recent disconnections with exact durations.
+    """
+    peer: Peer = request.app.state.peer
+    if not hasattr(peer, "connection_tracker") or peer.connection_tracker is None:
+        raise HTTPException(
+            status_code=503, detail="Connection tracker not initialized"
+        )
+    return JSONResponse(content=peer.connection_tracker.connection_stats_snapshot())
+
+
 @app.post("/api/v0/block/stat")
 async def block_stat(
     request: Request,
