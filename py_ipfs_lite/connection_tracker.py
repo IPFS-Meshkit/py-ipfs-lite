@@ -464,12 +464,33 @@ class ConnectionStatsTracker(INotifee):
         ]
         avg_dur = (sum(durations) / len(durations)) if durations else 0.0
 
-        # Lifespan distribution buckets
+        # Lifespan distribution buckets for disconnected sessions
         lifespan_dist = {
             "under_5s (failed/transient)": sum(1 for d in durations if d < 5.0),
             "5s_to_35s (DHT query hops)": sum(1 for d in durations if 5.0 <= d < 35.0),
             "35s_to_2m (short sessions)": sum(1 for d in durations if 35.0 <= d < 120.0),
-            "over_2m (stable peers)": sum(1 for d in durations if d >= 120.0),
+            "2m_to_5m (moderate sessions)": sum(1 for d in durations if 120.0 <= d < 300.0),
+            "5m_to_10m (extended sessions)": sum(1 for d in durations if 300.0 <= d < 600.0),
+            "10m_to_30m (long sessions)": sum(1 for d in durations if 600.0 <= d < 1800.0),
+            "over_30m (stable peers)": sum(1 for d in durations if d >= 1800.0),
+        }
+
+        # Lifespan distribution of currently active live connections
+        now_mono = time.monotonic()
+        active_durations = [
+            (now_mono - meta["start_mono"])
+            for meta in self._conn_meta.values()
+            if "start_mono" in meta and meta.get("peer_id") != "unknown"
+        ]
+        # Dedup if both conn and muxed_conn are in _conn_meta
+        active_durations_dedup = list({round(d, 2) for d in active_durations})
+
+        active_lifespan_dist = {
+            "under_2m": sum(1 for d in active_durations_dedup if d < 120.0),
+            "2m_to_5m": sum(1 for d in active_durations_dedup if 120.0 <= d < 300.0),
+            "5m_to_10m": sum(1 for d in active_durations_dedup if 300.0 <= d < 600.0),
+            "10m_to_30m": sum(1 for d in active_durations_dedup if 600.0 <= d < 1800.0),
+            "over_30m (long-lived stable)": sum(1 for d in active_durations_dedup if d >= 1800.0),
         }
 
         # Reason hints distribution
@@ -493,6 +514,7 @@ class ConnectionStatsTracker(INotifee):
             "active_connections_breakdown": {
                 "by_transport": active_by_transport,
                 "by_direction": active_by_direction,
+                "by_current_age": active_lifespan_dist,
             },
             "disconnections_lifespan_distribution": lifespan_dist,
             "disconnections_reason_breakdown": reasons_dist,
