@@ -849,6 +849,7 @@ class Peer:
                     for peer_id in batch:
                         if peer_id not in self._inflight_pings:
                             self._nursery.start_soon(_ping_tracked, peer_id)
+                            await trio.sleep(0.1)  # 100ms stagger between individual peer pings
                     if i + MAX_CONCURRENT_PINGS < len(peers_to_ping):
                         await trio.sleep(2.0)  # 2s gap between batches
             except Exception as e:
