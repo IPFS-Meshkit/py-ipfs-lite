@@ -634,9 +634,36 @@ async def debug_memory(request: Request) -> Any:
     except Exception as e:
         subsystems["peerstore_err"] = str(e)
 
+    # Introspect referrers of ServerQuicConnection
+    server_conns = [o for o in all_objs if type(o).__name__ == "ServerQuicConnection"]
+    server_conn_referrers = []
+    if server_conns:
+        for r in gc.get_referrers(server_conns[0])[:5]:
+            if isinstance(r, dict):
+                server_conn_referrers.append(f"dict(keys={list(r.keys())[:5]})")
+            else:
+                server_conn_referrers.append(f"{type(r).__name__}: {str(r)[:80]}")
+
+    # Test malloc_trim
+    rss_before_trim = 0
+    rss_after_trim = 0
+    try:
+        import os, psutil, ctypes
+        proc = psutil.Process(os.getpid())
+        rss_before_trim = proc.memory_info().rss / (1024 * 1024)
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim(0)
+        rss_after_trim = proc.memory_info().rss / (1024 * 1024)
+    except Exception:
+        pass
+
     return JSONResponse(
         content={
             "total_objects": len(all_objs),
+            "rss_before_trim_mb": round(rss_before_trim, 2),
+            "rss_after_trim_mb": round(rss_after_trim, 2),
+            "server_conns_count": len(server_conns),
+            "server_conn_referrers": server_conn_referrers,
             "top_by_count": top_by_count,
             "top_by_size": top_by_size,
             "subsystems": subsystems,
