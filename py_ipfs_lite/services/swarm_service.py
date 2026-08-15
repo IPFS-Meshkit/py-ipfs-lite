@@ -18,20 +18,29 @@ class SwarmPeers:
 async def list_connected_peers(peer: Peer) -> SwarmPeers:
     if peer.host is None:
         return SwarmPeers(count=0, peers=[])
+    import time
     import typing
 
     raw_host = typing.cast(typing.Any, getattr(peer.host, "_host", peer.host))
     network = raw_host.get_network()
     peerstore = raw_host.get_peerstore()
+    now_mono = time.monotonic()
     result = []
     seen: set[str] = set()
 
-    # Primary source: swarm connections dict.
-    # NOTE: we intentionally do NOT check `is_closed` here.
-    # The swarm removes closed SwarmConns from this dict (swarm.py L2316-2318),
-    # but there is a brief trio async window between `event_closed.set()` and
-    # the cleanup task running. Checking `is_closed` during this window gives
-    # false-0 results. Trusting the dict is accurate enough.
+    # Build lookup of peer metadata from connection tracker if available
+    tracker = getattr(peer, "connection_tracker", None)
+    conn_meta_map: dict[str, Any] = {}
+    if tracker is not None:
+        for meta in getattr(tracker, "_conn_meta", {}).values():
+            p_id = meta.get("peer_id")
+            if p_id and p_id != "unknown" and "start_mono" in meta:
+                if (
+                    p_id not in conn_meta_map
+                    or meta["start_mono"] < conn_meta_map[p_id]["start_mono"]
+                ):
+                    conn_meta_map[p_id] = meta
+
     for peer_id, conns in list(network.connections.items()):
         try:
             pid_str = peer_id.to_base58()
@@ -44,8 +53,42 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
             addrs = [str(a) for a in peerstore.addrs(peer_id)]
         except Exception:
             addrs = []
-        result.append({"peer": pid_str, "addrs": addrs})
 
+        meta = conn_meta_map.get(pid_str)
+        duration_secs = (
+            round(now_mono - meta["start_mono"], 1)
+            if meta and "start_mono" in meta
+            else 0.0
+        )
+        connected_at = meta.get("connected_at") if meta else None
+        transport = meta.get("transport", "unknown") if meta else "unknown"
+        direction = meta.get("direction", "unknown") if meta else "unknown"
+
+        if duration_secs >= 1800.0:
+            age_tier = "over_30m"
+        elif duration_secs >= 600.0:
+            age_tier = "10m_to_30m"
+        elif duration_secs >= 300.0:
+            age_tier = "5m_to_10m"
+        elif duration_secs >= 120.0:
+            age_tier = "2m_to_5m"
+        else:
+            age_tier = "under_2m"
+
+        result.append(
+            {
+                "peer": pid_str,
+                "addrs": addrs,
+                "connected_at": connected_at,
+                "duration_seconds": duration_secs,
+                "transport": transport,
+                "direction": direction,
+                "age_tier": age_tier,
+            }
+        )
+
+    # Sort peers by duration descending (longest-lived stable peers first)
+    result.sort(key=lambda p: p.get("duration_seconds", 0.0), reverse=True)
     return SwarmPeers(count=len(result), peers=result)
 
 

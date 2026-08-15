@@ -155,6 +155,22 @@ except Exception:
     pass
 
 
+IPFS_SWARM_PEERS_CONNECTED_OVER_30M = Gauge(
+    "ipfs_swarm_peers_connected_over_30m",
+    "Number of connected peers maintained for over 30 minutes",
+)
+
+IPFS_SWARM_PEERS_CONNECTED_OVER_10M = Gauge(
+    "ipfs_swarm_peers_connected_over_10m",
+    "Number of connected peers maintained for over 10 minutes",
+)
+
+IPFS_SWARM_PEERS_CONNECTED_OVER_5M = Gauge(
+    "ipfs_swarm_peers_connected_over_5m",
+    "Number of connected peers maintained for over 5 minutes",
+)
+
+
 def update_live_metrics(peer: Any) -> None:
     """Collect and update all dynamic gauges and counters from the live peer."""
     global _PROCESS, _LAST_CPU_TIMES, _LAST_CPU_CHECK_TIME
@@ -249,7 +265,7 @@ def update_live_metrics(peer: Any) -> None:
             if getattr(tracker, "_network", None) is None and raw_swarm is not None:
                 tracker._network = raw_swarm
             snap = tracker.connection_stats_snapshot()
-            total_active = snap.get("active_connections", 0)
+            total_active = snap.get("current_active_connections", 0)
             if total_active == 0 and raw_swarm is not None:
                 try:
                     conns_map = getattr(raw_swarm, "connections", {})
@@ -259,18 +275,30 @@ def update_live_metrics(peer: Any) -> None:
                     pass
             IPFS_SWARM_CONNECTIONS_TOTAL.set(total_active)
 
-            # Active connections by transport & direction
-            by_transport = snap.get("active_by_transport", {})
-            by_direction = snap.get("active_by_direction", {})
+            # Active connections by transport & direction & age breakdown
+            breakdown = snap.get("active_connections_breakdown", {})
+            by_transport = breakdown.get("by_transport", {})
+            by_direction = breakdown.get("by_direction", {})
             for t, count in by_transport.items():
                 IPFS_SWARM_CONNECTIONS.labels(transport=t, direction="all").set(count)
             for d, count in by_direction.items():
                 IPFS_SWARM_CONNECTIONS.labels(transport="all", direction=d).set(count)
 
             # Active Peers by Age Bucket
-            age_dist = snap.get("active_connections_lifespan_distribution", {})
+            age_dist = breakdown.get("by_current_age", {})
             for bucket, count in age_dist.items():
-                IPFS_SWARM_PEERS_BY_AGE.labels(age_bucket=bucket).set(count)
+                clean_bucket = bucket.split(" ")[0] if " " in bucket else bucket
+                IPFS_SWARM_PEERS_BY_AGE.labels(age_bucket=clean_bucket).set(count)
+
+            # Direct Prominence Gauges
+            over_30m = age_dist.get(
+                "over_30m (long-lived stable)", age_dist.get("over_30m", 0)
+            )
+            over_10m = over_30m + age_dist.get("10m_to_30m", 0)
+            over_5m = over_10m + age_dist.get("5m_to_10m", 0)
+            IPFS_SWARM_PEERS_CONNECTED_OVER_30M.set(over_30m)
+            IPFS_SWARM_PEERS_CONNECTED_OVER_10M.set(over_10m)
+            IPFS_SWARM_PEERS_CONNECTED_OVER_5M.set(over_5m)
 
             # Active streams by protocol
             if hasattr(tracker, "stream_stats_snapshot"):
