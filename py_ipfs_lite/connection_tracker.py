@@ -458,6 +458,10 @@ class ConnectionStatsTracker(INotifee):
         except Exception:
             pass
 
+        # Enforce memory cap on stats and stream histories
+        if len(self.stats) > 2000:
+            self._enforce_stats_capacity()
+
         logger.debug(
             "notifee: peer disconnected: %s (duration: %s, hint: %s, disconns: %d)",
             peer_id,
@@ -465,6 +469,32 @@ class ConnectionStatsTracker(INotifee):
             reason_hint,
             self.total_disconnected_events,
         )
+
+    def _enforce_stats_capacity(self) -> None:
+        """Evict oldest disconnected peer stats to keep memory bounded."""
+        if len(self.stats) <= 2000:
+            return
+        to_remove = []
+        for pid, s in self.stats.items():
+            if s.current_connections == 0:
+                to_remove.append(pid)
+                if len(self.stats) - len(to_remove) <= 1500:
+                    break
+        for pid in to_remove:
+            self.stats.pop(pid, None)
+            self.peer_streams.pop(pid, None)
+            self._peer_lifetime.pop(pid, None)
+
+        if len(self._conn_meta) > 2000:
+            # Prune orphan conn_meta entries if any
+            now_mono = time.monotonic()
+            stale_keys = [
+                k
+                for k, v in self._conn_meta.items()
+                if now_mono - v.get("start_mono", now_mono) > 3600.0
+            ]
+            for k in stale_keys[:500]:
+                self._conn_meta.pop(k, None)
 
     async def listen(self, network: INetwork, multiaddr: Multiaddr) -> None:
         self._network = network
