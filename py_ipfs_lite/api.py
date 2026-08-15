@@ -634,23 +634,15 @@ async def debug_memory(request: Request) -> Any:
     except Exception as e:
         subsystems["peerstore_err"] = str(e)
 
-    # Introspect Trio tasks
+    # Introspect Trio tasks via GC
     task_counts: Counter[str] = Counter()
-    try:
-        import trio.lowlevel as t_low
-        root_task = t_low.current_root_task()
-        def collect_tasks(t: Any) -> None:
-            name = getattr(t, "name", str(t))
-            if hasattr(t, "coro") and hasattr(t.coro, "cr_code"):
-                co = t.coro.cr_code
-                name = f"{co.co_filename.split('/')[-1]}:{co.co_name}:{co.co_firstlineno}"
-            task_counts[name] += 1
-            for child in getattr(t, "child_tasks", ()):
-                collect_tasks(child)
-        if root_task:
-            collect_tasks(root_task)
-    except Exception as e:
-        task_counts["error"] = str(e)
+    task_objs = [o for o in all_objs if type(o).__name__ == "Task"]
+    for t in task_objs:
+        if hasattr(t, "coro") and hasattr(t.coro, "cr_code"):
+            co = t.coro.cr_code
+            task_counts[f"{co.co_filename.split('/')[-1]}:{co.co_name}:{co.co_firstlineno}"] += 1
+        else:
+            task_counts[getattr(t, "name", "unknown")] += 1
 
     # Introspect referrers of ServerQuicConnection
     server_conns = [o for o in all_objs if type(o).__name__ == "ServerQuicConnection"]
