@@ -75,6 +75,19 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
         else:
             age_tier = "under_2m"
 
+        stream_stats = (
+            tracker.peer_stream_stats.get(pid_str) if tracker else None
+        )
+        streams_outbound = (
+            getattr(stream_stats, "current_open_outbound", 0) if stream_stats else 0
+        )
+        streams_inbound = (
+            getattr(stream_stats, "current_open_inbound", 0) if stream_stats else 0
+        )
+        streams_total = (
+            getattr(stream_stats, "current_open", 0) if stream_stats else 0
+        )
+
         result.append(
             {
                 "peer": pid_str,
@@ -84,6 +97,9 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
                 "transport": transport,
                 "direction": direction,
                 "age_tier": age_tier,
+                "streams_total": streams_total,
+                "streams_outbound": streams_outbound,
+                "streams_inbound": streams_inbound,
             }
         )
 

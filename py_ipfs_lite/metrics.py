@@ -101,6 +101,32 @@ IPFS_STREAMS_CLOSED_TOTAL = Counter(
     "ipfs_streams_closed_total", "Total number of network streams closed"
 )
 
+IPFS_STREAMS_OUTBOUND_TOTAL = Counter(
+    "ipfs_streams_outbound_total",
+    "Total number of network streams opened by us (outbound/initiator)",
+)
+
+IPFS_STREAMS_INBOUND_TOTAL = Counter(
+    "ipfs_streams_inbound_total",
+    "Total number of network streams received by us (inbound/receiver)",
+)
+
+IPFS_STREAMS_OUTBOUND_ACTIVE = Gauge(
+    "ipfs_streams_outbound_active",
+    "Number of currently active streams opened by us (outbound/initiator)",
+)
+
+IPFS_STREAMS_INBOUND_ACTIVE = Gauge(
+    "ipfs_streams_inbound_active",
+    "Number of currently active streams received by us (inbound/receiver)",
+)
+
+IPFS_STREAMS_ACTIVE_BY_DIRECTION = Gauge(
+    "ipfs_streams_active_by_direction",
+    "Number of currently open multiplexed streams by direction (outbound vs inbound)",
+    ["direction"],
+)
+
 IPFS_STREAMS_LEAKED_TOTAL = Counter(
     "ipfs_streams_leaked_total", "Total number of suspected leaked streams detected"
 )
@@ -300,12 +326,19 @@ def update_live_metrics(peer: Any) -> None:
             IPFS_SWARM_PEERS_CONNECTED_OVER_10M.set(over_10m)
             IPFS_SWARM_PEERS_CONNECTED_OVER_5M.set(over_5m)
 
-            # Active streams by protocol
+            # Active streams by protocol and direction
             if hasattr(tracker, "stream_stats_snapshot"):
                 stream_snap = tracker.stream_stats_snapshot()
                 open_by_proto = stream_snap.get("open_streams_by_protocol", {})
                 for proto, count in open_by_proto.items():
                     IPFS_STREAMS_ACTIVE.labels(protocol=proto).set(count)
+
+                act_out = stream_snap.get("ActiveOutboundStreams", 0)
+                act_in = stream_snap.get("ActiveInboundStreams", 0)
+                IPFS_STREAMS_OUTBOUND_ACTIVE.set(act_out)
+                IPFS_STREAMS_INBOUND_ACTIVE.set(act_in)
+                IPFS_STREAMS_ACTIVE_BY_DIRECTION.labels(direction="outbound").set(act_out)
+                IPFS_STREAMS_ACTIVE_BY_DIRECTION.labels(direction="inbound").set(act_in)
         except Exception:
             pass
 

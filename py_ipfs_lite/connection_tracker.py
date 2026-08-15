@@ -12,8 +12,10 @@ from pydantic import BaseModel
 
 from py_ipfs_lite.metrics import (
     IPFS_STREAMS_CLOSED_TOTAL,
+    IPFS_STREAMS_INBOUND_TOTAL,
     IPFS_STREAMS_LEAKED_TOTAL,
     IPFS_STREAMS_OPENED_TOTAL,
+    IPFS_STREAMS_OUTBOUND_TOTAL,
 )
 
 logger = logging.getLogger("py_ipfs_lite.connection_tracker")
@@ -41,8 +43,12 @@ class PeerStreamStats(BaseModel):
 
     peer_id: str
     total_opened: int = 0
+    total_opened_outbound: int = 0
+    total_opened_inbound: int = 0
     total_closed: int = 0
     current_open: int = 0
+    current_open_outbound: int = 0
+    current_open_inbound: int = 0
     max_concurrent_open: int = 0
     total_resets: int = 0
     suspected_leaks: int = 0
@@ -109,14 +115,43 @@ def _stream_protocol(stream: INetStream) -> str | None:
         return None
 
 
-def _stream_direction(stream: INetStream) -> str:
-    direction = getattr(stream, "_direction", None)
-    if direction is not None:
-        name = getattr(direction, "name", None)
-        if name:
-            return name.lower()
-        if hasattr(direction, "value"):
-            return str(direction)
+def _stream_direction(stream: Any) -> str:
+    if stream is None:
+        return "unknown"
+    try:
+        # 1. Direct _direction attribute on stream (NetStream._direction)
+        direction = getattr(stream, "_direction", None)
+        if direction is not None:
+            name = getattr(direction, "name", None)
+            if name and name.lower() in ("inbound", "outbound"):
+                return name.lower()
+            s = str(direction).lower()
+            if "inbound" in s:
+                return "inbound"
+            if "outbound" in s:
+                return "outbound"
+
+        # 2. Check underlying muxed_stream (e.g. QUICStream._direction)
+        muxed = getattr(stream, "muxed_stream", None)
+        if muxed is not None:
+            m_dir = getattr(muxed, "_direction", None)
+            if m_dir is not None:
+                name = getattr(m_dir, "name", None)
+                if name and name.lower() in ("inbound", "outbound"):
+                    return name.lower()
+                s = str(m_dir).lower()
+                if "inbound" in s:
+                    return "inbound"
+                if "outbound" in s:
+                    return "outbound"
+            if hasattr(muxed, "is_outbound"):
+                is_out = muxed.is_outbound() if callable(muxed.is_outbound) else muxed.is_outbound
+                return "outbound" if is_out else "inbound"
+            if hasattr(muxed, "is_initiator"):
+                is_init = muxed.is_initiator() if callable(muxed.is_initiator) else muxed.is_initiator
+                return "outbound" if is_init else "inbound"
+    except Exception:
+        pass
     return "unknown"
 
 
@@ -251,6 +286,10 @@ class ConnectionStatsTracker(INotifee):
         # Connection lifecycle counters and metrics
         self.total_connected_events: int = 0
         self.total_disconnected_events: int = 0
+        self.total_outbound_opened: int = 0
+        self.total_inbound_opened: int = 0
+        self.total_outbound_closed: int = 0
+        self.total_inbound_closed: int = 0
         self._conn_meta: dict[int, dict[str, Any]] = {}
         self.recent_disconnections: deque[dict[str, Any]] = deque(maxlen=500)
 
@@ -640,6 +679,17 @@ class ConnectionStatsTracker(INotifee):
         peer_stats.max_concurrent_open = max(
             peer_stats.max_concurrent_open, peer_stats.current_open
         )
+        if record.direction == "outbound":
+            self.total_outbound_opened += 1
+            peer_stats.total_opened_outbound += 1
+            peer_stats.current_open_outbound += 1
+            IPFS_STREAMS_OUTBOUND_TOTAL.inc()
+        elif record.direction == "inbound":
+            self.total_inbound_opened += 1
+            peer_stats.total_opened_inbound += 1
+            peer_stats.current_open_inbound += 1
+            IPFS_STREAMS_INBOUND_TOTAL.inc()
+
         proto = record.protocol or "unknown"
         peer_stats.by_protocol[proto] = peer_stats.by_protocol.get(proto, 0) + 1
 
@@ -701,6 +751,13 @@ class ConnectionStatsTracker(INotifee):
         )
         peer_stats.total_closed += 1
         peer_stats.current_open = max(0, peer_stats.current_open - 1)
+        if record.direction == "outbound":
+            self.total_outbound_closed += 1
+            peer_stats.current_open_outbound = max(0, peer_stats.current_open_outbound - 1)
+        elif record.direction == "inbound":
+            self.total_inbound_closed += 1
+            peer_stats.current_open_inbound = max(0, peer_stats.current_open_inbound - 1)
+
         if record.was_reset:
             peer_stats.total_resets += 1
 
@@ -711,7 +768,7 @@ class ConnectionStatsTracker(INotifee):
         IPFS_STREAMS_CLOSED_TOTAL.inc()
         logger.debug(
             f"stream closed peer={record.peer_id} proto={record.protocol} "
-            f"duration={record.duration:.2f}s reset={record.was_reset} "
+            f"dir={record.direction} duration={record.duration:.2f}s reset={record.was_reset} "
             f"open_now={peer_stats.current_open}"
         )
 
@@ -721,10 +778,24 @@ class ConnectionStatsTracker(INotifee):
         the peer's by_protocol bucket if the protocol became known.
         """
         old_protocol = record.protocol
+        old_direction = record.direction
         if record.protocol is None:
             record.protocol = _stream_protocol(record.stream_ref)
         if record.direction == "unknown":
             record.direction = _stream_direction(record.stream_ref)
+            if old_direction != record.direction and record.direction in ("outbound", "inbound"):
+                peer_stats = self.peer_stream_stats.get(record.peer_id)
+                if peer_stats is not None:
+                    if record.direction == "outbound":
+                        self.total_outbound_opened += 1
+                        peer_stats.total_opened_outbound += 1
+                        peer_stats.current_open_outbound += 1
+                        IPFS_STREAMS_OUTBOUND_TOTAL.inc()
+                    elif record.direction == "inbound":
+                        self.total_inbound_opened += 1
+                        peer_stats.total_opened_inbound += 1
+                        peer_stats.current_open_inbound += 1
+                        IPFS_STREAMS_INBOUND_TOTAL.inc()
 
         if old_protocol != record.protocol and record.protocol is not None:
             peer_stats = self.peer_stream_stats.get(record.peer_id)
@@ -932,6 +1003,13 @@ class ConnectionStatsTracker(INotifee):
         )
         peer_stats.total_closed += 1
         peer_stats.current_open = max(0, peer_stats.current_open - 1)
+        if record.direction == "outbound":
+            self.total_outbound_closed += 1
+            peer_stats.current_open_outbound = max(0, peer_stats.current_open_outbound - 1)
+        elif record.direction == "inbound":
+            self.total_inbound_closed += 1
+            peer_stats.current_open_inbound = max(0, peer_stats.current_open_inbound - 1)
+
         if record.was_reset:
             peer_stats.total_resets += 1
         if record.opened_at > 0:
@@ -1057,8 +1135,38 @@ class ConnectionStatsTracker(INotifee):
                 dump["avg_lifetime_seconds"] = None
             per_peer.append(dump)
 
+        active_outbound = sum(
+            1 for r in self.streams.values() if r.direction == "outbound"
+        )
+        active_inbound = sum(
+            1 for r in self.streams.values() if r.direction == "inbound"
+        )
+        active_unknown = len(self.streams) - (active_outbound + active_inbound)
+
         return {
             "CurrentOpenStreams": len(self.streams),
+            "ActiveOutboundStreams": active_outbound,
+            "ActiveInboundStreams": active_inbound,
+            "ActiveUnknownStreams": active_unknown,
+            "TotalOutboundOpened": self.total_outbound_opened,
+            "TotalInboundOpened": self.total_inbound_opened,
+            "TotalOutboundClosed": self.total_outbound_closed,
+            "TotalInboundClosed": self.total_inbound_closed,
+            "ByDirection": {
+                "active": {
+                    "outbound": active_outbound,
+                    "inbound": active_inbound,
+                    "unknown": active_unknown,
+                },
+                "total_opened": {
+                    "outbound": self.total_outbound_opened,
+                    "inbound": self.total_inbound_opened,
+                },
+                "total_closed": {
+                    "outbound": self.total_outbound_closed,
+                    "inbound": self.total_inbound_closed,
+                },
+            },
             "OpenStreams": open_streams,
             "AvgLifetimeSeconds": self.avg_stream_lifetime(),
             "PerPeer": per_peer,
