@@ -303,12 +303,8 @@ class ConnectionStatsTracker(INotifee):
         # Keys are never reused (connection-scoped + stream-object identity), so
         # a simple bounded FIFO is safe.
         self._finalized_keys: dict[str, float] = {}
-        self._max_finalized_keys = 20_000
-        # Entries older than this are dropped from the dedup set.  Keys embed
-        # Python object ids which *can* be reused by the allocator after the
-        # underlying objects are garbage collected, so the dedup window must
-        # be bounded in time as well as in size.
-        self._finalized_ttl_seconds = 3_600.0
+        self._max_finalized_keys = 2_000
+        self._finalized_ttl_seconds = 300.0
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -515,28 +511,27 @@ class ConnectionStatsTracker(INotifee):
 
     def _enforce_stats_capacity(self) -> None:
         """Evict oldest disconnected peer stats to keep memory bounded."""
-        if len(self.stats) <= 2000:
+        if len(self.stats) <= 500:
             return
         to_remove = []
         for pid, s in self.stats.items():
             if s.current_connections == 0:
                 to_remove.append(pid)
-                if len(self.stats) - len(to_remove) <= 1500:
+                if len(self.stats) - len(to_remove) <= 300:
                     break
         for pid in to_remove:
             self.stats.pop(pid, None)
             self.peer_stream_stats.pop(pid, None)
             self._peer_lifetime.pop(pid, None)
 
-        if len(self._conn_meta) > 2000:
-            # Prune orphan conn_meta entries if any
+        if len(self._conn_meta) > 500:
             now_mono = time.monotonic()
             stale_keys = [
                 k
                 for k, v in self._conn_meta.items()
-                if now_mono - v.get("start_mono", now_mono) > 3600.0
+                if now_mono - v.get("start_mono", now_mono) > 600.0
             ]
-            for k in stale_keys[:500]:
+            for k in stale_keys[:300]:
                 self._conn_meta.pop(k, None)
 
     async def listen(self, network: INetwork, multiaddr: Multiaddr) -> None:
