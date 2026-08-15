@@ -292,6 +292,8 @@ class ConnectionStatsTracker(INotifee):
         self.total_outbound_closed: int = 0
         self.total_inbound_closed: int = 0
         self.total_streams_by_protocol: dict[str, int] = {}
+        self.total_streams_by_protocol_outbound: dict[str, int] = {}
+        self.total_streams_by_protocol_inbound: dict[str, int] = {}
         self._conn_meta: dict[int, dict[str, Any]] = {}
         self.recent_disconnections: deque[dict[str, Any]] = deque(maxlen=500)
 
@@ -813,9 +815,18 @@ class ConnectionStatsTracker(INotifee):
                 )
 
         if record.protocol and record.protocol != "unknown" and not record.counted_in_proto_total:
-            self.total_streams_by_protocol[record.protocol] = (
-                self.total_streams_by_protocol.get(record.protocol, 0) + 1
+            proto = record.protocol
+            self.total_streams_by_protocol[proto] = (
+                self.total_streams_by_protocol.get(proto, 0) + 1
             )
+            if record.direction == "outbound":
+                self.total_streams_by_protocol_outbound[proto] = (
+                    self.total_streams_by_protocol_outbound.get(proto, 0) + 1
+                )
+            elif record.direction == "inbound":
+                self.total_streams_by_protocol_inbound[proto] = (
+                    self.total_streams_by_protocol_inbound.get(proto, 0) + 1
+                )
             record.counted_in_proto_total = True
 
     # ------------------------------------------------------------------
@@ -1167,6 +1178,8 @@ class ConnectionStatsTracker(INotifee):
             "TotalInboundClosed": self.total_inbound_closed,
             "open_streams_by_protocol": open_by_proto,
             "total_streams_by_protocol": dict(self.total_streams_by_protocol),
+            "total_streams_by_protocol_outbound": dict(self.total_streams_by_protocol_outbound),
+            "total_streams_by_protocol_inbound": dict(self.total_streams_by_protocol_inbound),
             "ByDirection": {
                 "active": {
                     "outbound": active_outbound,

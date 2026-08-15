@@ -139,8 +139,8 @@ IPFS_STREAMS_ACTIVE = Gauge(
 
 IPFS_STREAMS_BY_PROTOCOL_TOTAL = Gauge(
     "ipfs_streams_by_protocol_total",
-    "Cumulative network streams opened by protocol",
-    ["protocol"],
+    "Cumulative network streams opened by protocol and direction",
+    ["protocol", "direction"],
 )
 
 IPFS_STREAMS_RESETS_TOTAL = Counter(
@@ -340,8 +340,12 @@ def update_live_metrics(peer: Any) -> None:
                     IPFS_STREAMS_ACTIVE.labels(protocol=proto).set(count)
 
                 total_by_proto = stream_snap.get("total_streams_by_protocol", {})
+                total_by_proto_out = stream_snap.get("total_streams_by_protocol_outbound", {})
+                total_by_proto_in = stream_snap.get("total_streams_by_protocol_inbound", {})
                 for proto, count in total_by_proto.items():
-                    IPFS_STREAMS_BY_PROTOCOL_TOTAL.labels(protocol=proto).set(count)
+                    IPFS_STREAMS_BY_PROTOCOL_TOTAL.labels(protocol=proto, direction="all").set(count)
+                    IPFS_STREAMS_BY_PROTOCOL_TOTAL.labels(protocol=proto, direction="outbound").set(total_by_proto_out.get(proto, 0))
+                    IPFS_STREAMS_BY_PROTOCOL_TOTAL.labels(protocol=proto, direction="inbound").set(total_by_proto_in.get(proto, 0))
 
                 act_out = stream_snap.get("ActiveOutboundStreams", 0)
                 act_in = stream_snap.get("ActiveInboundStreams", 0)
