@@ -667,7 +667,10 @@ async def debug_memory(request: Request) -> Any:
     rss_before_trim = 0.0
     rss_after_trim = 0.0
     try:
-        import os, psutil, ctypes
+        import ctypes
+        import os
+
+        import psutil
         proc = psutil.Process(os.getpid())
         rss_before_trim = proc.memory_info().rss / (1024 * 1024)
         libc = ctypes.CDLL("libc.so.6")

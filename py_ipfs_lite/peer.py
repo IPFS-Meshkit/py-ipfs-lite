@@ -976,7 +976,8 @@ class Peer:
 
                 # Periodically trigger GC and glibc malloc_trim to return free memory to OS
                 try:
-                    import gc, ctypes
+                    import ctypes
+                    import gc
                     gc.collect()
                     libc = ctypes.CDLL("libc.so.6")
                     libc.malloc_trim(0)

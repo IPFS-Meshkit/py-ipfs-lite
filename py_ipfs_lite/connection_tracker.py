@@ -146,10 +146,18 @@ def _stream_direction(stream: Any) -> str:
                 if "outbound" in s:
                     return "outbound"
             if hasattr(muxed, "is_outbound"):
-                is_out = muxed.is_outbound() if callable(muxed.is_outbound) else muxed.is_outbound
+                is_out = (
+                    muxed.is_outbound()
+                    if callable(muxed.is_outbound)
+                    else muxed.is_outbound
+                )
                 return "outbound" if is_out else "inbound"
             if hasattr(muxed, "is_initiator"):
-                is_init = muxed.is_initiator() if callable(muxed.is_initiator) else muxed.is_initiator
+                is_init = (
+                    muxed.is_initiator()
+                    if callable(muxed.is_initiator)
+                    else muxed.is_initiator
+                )
                 return "outbound" if is_init else "inbound"
     except Exception:
         pass
@@ -752,10 +760,14 @@ class ConnectionStatsTracker(INotifee):
         peer_stats.current_open = max(0, peer_stats.current_open - 1)
         if record.direction == "outbound":
             self.total_outbound_closed += 1
-            peer_stats.current_open_outbound = max(0, peer_stats.current_open_outbound - 1)
+            peer_stats.current_open_outbound = max(
+                0, peer_stats.current_open_outbound - 1
+            )
         elif record.direction == "inbound":
             self.total_inbound_closed += 1
-            peer_stats.current_open_inbound = max(0, peer_stats.current_open_inbound - 1)
+            peer_stats.current_open_inbound = max(
+                0, peer_stats.current_open_inbound - 1
+            )
 
         if record.was_reset:
             peer_stats.total_resets += 1
@@ -767,8 +779,8 @@ class ConnectionStatsTracker(INotifee):
         IPFS_STREAMS_CLOSED_TOTAL.inc()
         logger.debug(
             f"stream closed peer={record.peer_id} proto={record.protocol} "
-            f"dir={record.direction} duration={record.duration:.2f}s reset={record.was_reset} "
-            f"open_now={peer_stats.current_open}"
+            f"dir={record.direction} duration={record.duration:.2f}s "
+            f"reset={record.was_reset} open_now={peer_stats.current_open}"
         )
 
     def _refresh_record_metadata(self, record: StreamRecord) -> None:
@@ -782,7 +794,10 @@ class ConnectionStatsTracker(INotifee):
             record.protocol = _stream_protocol(record.stream_ref)
         if record.direction == "unknown":
             record.direction = _stream_direction(record.stream_ref)
-            if old_direction != record.direction and record.direction in ("outbound", "inbound"):
+            if (
+                old_direction != record.direction
+                and record.direction in ("outbound", "inbound")
+            ):
                 peer_stats = self.peer_stream_stats.get(record.peer_id)
                 if peer_stats is not None:
                     if record.direction == "outbound":
@@ -809,7 +824,11 @@ class ConnectionStatsTracker(INotifee):
                     peer_stats.by_protocol.get(new_bucket, 0) + 1
                 )
 
-        if record.protocol and record.protocol != "unknown" and not getattr(record, "counted_in_proto_total", False):
+        if (
+            record.protocol
+            and record.protocol != "unknown"
+            and not getattr(record, "counted_in_proto_total", False)
+        ):
             proto = record.protocol
             self.total_streams_by_protocol[proto] = (
                 self.total_streams_by_protocol.get(proto, 0) + 1
@@ -1019,10 +1038,14 @@ class ConnectionStatsTracker(INotifee):
         peer_stats.current_open = max(0, peer_stats.current_open - 1)
         if record.direction == "outbound":
             self.total_outbound_closed += 1
-            peer_stats.current_open_outbound = max(0, peer_stats.current_open_outbound - 1)
+            peer_stats.current_open_outbound = max(
+                0, peer_stats.current_open_outbound - 1
+            )
         elif record.direction == "inbound":
             self.total_inbound_closed += 1
-            peer_stats.current_open_inbound = max(0, peer_stats.current_open_inbound - 1)
+            peer_stats.current_open_inbound = max(
+                0, peer_stats.current_open_inbound - 1
+            )
 
         if record.was_reset:
             peer_stats.total_resets += 1
@@ -1173,8 +1196,12 @@ class ConnectionStatsTracker(INotifee):
             "TotalInboundClosed": self.total_inbound_closed,
             "open_streams_by_protocol": open_by_proto,
             "total_streams_by_protocol": dict(self.total_streams_by_protocol),
-            "total_streams_by_protocol_outbound": dict(self.total_streams_by_protocol_outbound),
-            "total_streams_by_protocol_inbound": dict(self.total_streams_by_protocol_inbound),
+            "total_streams_by_protocol_outbound": dict(
+                self.total_streams_by_protocol_outbound
+            ),
+            "total_streams_by_protocol_inbound": dict(
+                self.total_streams_by_protocol_inbound
+            ),
             "ByDirection": {
                 "active": {
                     "outbound": active_outbound,
