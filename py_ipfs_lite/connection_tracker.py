@@ -814,7 +814,7 @@ class ConnectionStatsTracker(INotifee):
                     peer_stats.by_protocol.get(new_bucket, 0) + 1
                 )
 
-        if record.protocol and record.protocol != "unknown" and not record.counted_in_proto_total:
+        if record.protocol and record.protocol != "unknown" and not getattr(record, "counted_in_proto_total", False):
             proto = record.protocol
             self.total_streams_by_protocol[proto] = (
                 self.total_streams_by_protocol.get(proto, 0) + 1
@@ -827,7 +827,7 @@ class ConnectionStatsTracker(INotifee):
                 self.total_streams_by_protocol_inbound[proto] = (
                     self.total_streams_by_protocol_inbound.get(proto, 0) + 1
                 )
-            record.counted_in_proto_total = True
+            setattr(record, "counted_in_proto_total", True)
 
     # ------------------------------------------------------------------
     # Leak detection
