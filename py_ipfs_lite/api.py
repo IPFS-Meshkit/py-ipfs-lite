@@ -487,16 +487,14 @@ async def debug_conns(request: Request) -> Any:
     return JSONResponse(content={"total_connections": total})
 
 
+@app.get("/metrics")
 @app.get("/debug/metrics/prometheus")
 async def metrics(request: Request) -> Any:
     """Expose Prometheus metrics."""
-    peer: Peer = request.app.state.peer
-    from py_ipfs_lite.metrics import IPFS_SWARM_PEERS
-    from py_ipfs_lite.services import swarm_service
+    peer: Peer = getattr(request.app.state, "peer", None)
+    from py_ipfs_lite.metrics import update_live_metrics
 
-    conn_count = await swarm_service.count_connections(peer)
-
-    IPFS_SWARM_PEERS.set(conn_count)
+    update_live_metrics(peer)
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

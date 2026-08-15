@@ -18,15 +18,21 @@ def test_metrics_endpoint(client):
     mock_peer.host.get_network.return_value = mock_network
     mock_peer.host._host.get_network.return_value = mock_network
     app.state.peer = mock_peer
-    response = client.get("/debug/metrics/prometheus")
-    assert response.status_code == 200
-    content = response.text
 
-    assert "ipfs_blockstore_blocks_total" in content
-    assert "ipfs_gc_runs_total" in content
-    assert "ipfs_dht_query_latency_seconds" in content
-    assert "ipfs_bitswap_bytes_received_total" in content
-    assert "ipfs_swarm_peers" in content
+    for endpoint in ("/metrics", "/debug/metrics/prometheus"):
+        response = client.get(endpoint)
+        assert response.status_code == 200
+        content = response.text
+
+        assert "ipfs_blockstore_blocks_total" in content
+        assert "ipfs_gc_runs_total" in content
+        assert "ipfs_dht_query_latency_seconds" in content
+        assert "ipfs_bitswap_bytes_received_total" in content
+        assert "ipfs_swarm_peers" in content
+        assert "ipfs_swarm_connections_total" in content
+        assert "ipfs_process_cpu_percent" in content
+        assert "ipfs_process_memory_rss_bytes" in content
+        assert "ipfs_process_uptime_seconds" in content
 
 
 @pytest.mark.trio

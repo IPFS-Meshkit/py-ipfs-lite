@@ -1,15 +1,19 @@
+import os
+import time
 from typing import Any
 
 from prometheus_client import Counter, Gauge, Histogram
 
+# BlockStore Metrics
 IPFS_BLOCKSTORE_SIZE_BYTES = Gauge(
-    "ipfs_blockstore_size_bytes", "Total size of blocks in the blockstore"
+    "ipfs_blockstore_size_bytes", "Total size of blocks in the blockstore in bytes"
 )
 
 IPFS_BLOCKSTORE_BLOCKS_TOTAL = Gauge(
     "ipfs_blockstore_blocks_total", "Total number of blocks in the blockstore"
 )
 
+# Bitswap Metrics
 IPFS_BITSWAP_BYTES_SENT_TOTAL = Counter(
     "ipfs_bitswap_bytes_sent_total", "Total bytes sent over bitswap"
 )
@@ -18,10 +22,20 @@ IPFS_BITSWAP_BYTES_RECEIVED_TOTAL = Counter(
     "ipfs_bitswap_bytes_received_total", "Total bytes received over bitswap"
 )
 
-IPFS_DHT_QUERY_LATENCY_SECONDS = Histogram(
-    "ipfs_dht_query_latency_seconds", "Latency of DHT queries"
+IPFS_BITSWAP_MESSAGES_SENT_TOTAL = Counter(
+    "ipfs_bitswap_messages_sent_total", "Total messages sent over bitswap"
 )
 
+IPFS_BITSWAP_MESSAGES_RECEIVED_TOTAL = Counter(
+    "ipfs_bitswap_messages_received_total", "Total messages received over bitswap"
+)
+
+# DHT Routing Metrics
+IPFS_DHT_QUERY_LATENCY_SECONDS = Histogram(
+    "ipfs_dht_query_latency_seconds", "Latency of DHT queries in seconds"
+)
+
+# Garbage Collection Metrics
 IPFS_GC_RUNS_TOTAL = Counter(
     "ipfs_gc_runs_total", "Total number of garbage collection runs"
 )
@@ -31,8 +45,54 @@ IPFS_GC_RECLAIMED_BLOCKS_TOTAL = Counter(
     "Total number of blocks reclaimed during garbage collection",
 )
 
-IPFS_SWARM_PEERS = Gauge("ipfs_swarm_peers", "Number of connected swarm peers")
+# Swarm & Connections Observability
+IPFS_SWARM_PEERS = Gauge(
+    "ipfs_swarm_peers", "Total number of unique connected swarm peers"
+)
 
+IPFS_SWARM_CONNECTIONS_TOTAL = Gauge(
+    "ipfs_swarm_connections_total",
+    "Total active raw connections across all transports",
+)
+
+IPFS_SWARM_CONNECTIONS = Gauge(
+    "ipfs_swarm_connections",
+    "Number of active connections by transport and direction",
+    ["transport", "direction"],
+)
+
+IPFS_SWARM_PEERS_BY_AGE = Gauge(
+    "ipfs_swarm_peers_by_age",
+    "Number of active peers categorized by connection duration tier",
+    ["age_bucket"],
+)
+
+IPFS_SWARM_CONNECTS_TOTAL = Counter(
+    "ipfs_swarm_connects_total",
+    "Total lifetime connection events by transport",
+    ["transport"],
+)
+
+IPFS_SWARM_DISCONNECTS_TOTAL = Counter(
+    "ipfs_swarm_disconnects_total",
+    "Total lifetime disconnection events by transport",
+    ["transport"],
+)
+
+IPFS_SWARM_DISCONNECT_REASONS_TOTAL = Counter(
+    "ipfs_swarm_disconnect_reasons_total",
+    "Total disconnection events by estimated reason category",
+    ["reason_hint"],
+)
+
+# Auto-Connector State & Watermarks
+IPFS_AUTOCONNECTOR_STATE = Gauge(
+    "ipfs_autoconnector_state",
+    "Auto-connector configuration and live state values",
+    ["metric"],
+)
+
+# Network Streams Observability
 IPFS_STREAMS_OPENED_TOTAL = Counter(
     "ipfs_streams_opened_total", "Total number of network streams opened"
 )
@@ -44,6 +104,134 @@ IPFS_STREAMS_CLOSED_TOTAL = Counter(
 IPFS_STREAMS_LEAKED_TOTAL = Counter(
     "ipfs_streams_leaked_total", "Total number of suspected leaked streams detected"
 )
+
+IPFS_STREAMS_ACTIVE = Gauge(
+    "ipfs_streams_active",
+    "Number of currently open multiplexed streams by protocol",
+    ["protocol"],
+)
+
+IPFS_STREAMS_RESETS_TOTAL = Counter(
+    "ipfs_streams_resets_total", "Total number of stream resets observed"
+)
+
+# System & Process Performance
+IPFS_PROCESS_CPU_PERCENT = Gauge(
+    "ipfs_process_cpu_percent", "Current process CPU utilization percentage"
+)
+
+IPFS_PROCESS_MEMORY_RSS_BYTES = Gauge(
+    "ipfs_process_memory_rss_bytes",
+    "Process Resident Set Size (physical memory) in bytes",
+)
+
+IPFS_PROCESS_MEMORY_VMS_BYTES = Gauge(
+    "ipfs_process_memory_vms_bytes",
+    "Process Virtual Memory Size in bytes",
+)
+
+IPFS_PROCESS_OPEN_FDS = Gauge(
+    "ipfs_process_open_fds", "Number of open file descriptors"
+)
+
+IPFS_PROCESS_UPTIME_SECONDS = Gauge(
+    "ipfs_process_uptime_seconds", "Node process uptime in seconds"
+)
+
+_PROCESS_START_TIME = time.time()
+
+
+def update_live_metrics(peer: Any) -> None:
+    """Collect and update all dynamic gauges and counters from the live peer."""
+    # Process Metrics
+    try:
+        import psutil
+
+        proc = psutil.Process(os.getpid())
+        IPFS_PROCESS_CPU_PERCENT.set(proc.cpu_percent(interval=None))
+        mem = proc.memory_info()
+        IPFS_PROCESS_MEMORY_RSS_BYTES.set(mem.rss)
+        IPFS_PROCESS_MEMORY_VMS_BYTES.set(mem.vms)
+        if hasattr(proc, "num_fds"):
+            IPFS_PROCESS_OPEN_FDS.set(proc.num_fds())
+    except Exception:
+        pass
+
+    IPFS_PROCESS_UPTIME_SECONDS.set(time.time() - _PROCESS_START_TIME)
+
+    # Swarm / Network metrics
+    if peer is None:
+        return
+
+    raw_swarm = None
+    try:
+        if hasattr(peer, "host") and peer.host is not None:
+            if hasattr(peer.host, "_host") and peer.host._host is not None:
+                raw_swarm = peer.host._host.get_network()
+            elif hasattr(peer.host, "get_network"):
+                raw_swarm = peer.host.get_network()
+    except Exception:
+        pass
+
+    # Connection Manager / AutoConnector State
+    if raw_swarm is not None:
+        try:
+            conns_map = getattr(raw_swarm, "connections", {})
+            total_unique_peers = len(conns_map)
+            IPFS_SWARM_PEERS.set(total_unique_peers)
+
+            if hasattr(raw_swarm, "connection_config") and raw_swarm.connection_config:
+                cfg = raw_swarm.connection_config
+                IPFS_AUTOCONNECTOR_STATE.labels(metric="low_watermark").set(
+                    getattr(cfg, "low_watermark", 0)
+                )
+                IPFS_AUTOCONNECTOR_STATE.labels(metric="high_watermark").set(
+                    getattr(cfg, "high_watermark", 0)
+                )
+                IPFS_AUTOCONNECTOR_STATE.labels(metric="min_connections").set(
+                    getattr(cfg, "min_connections", 0)
+                )
+                IPFS_AUTOCONNECTOR_STATE.labels(metric="max_connections").set(
+                    getattr(cfg, "max_connections", 0)
+                )
+
+            if hasattr(raw_swarm, "auto_connector") and raw_swarm.auto_connector:
+                in_flight = len(
+                    getattr(raw_swarm.auto_connector, "_in_flight_dials", set())
+                )
+                IPFS_AUTOCONNECTOR_STATE.labels(metric="in_flight_dials").set(in_flight)
+        except Exception:
+            pass
+
+    # Connection tracker metrics
+    tracker = getattr(peer, "connection_tracker", None)
+    if tracker is not None:
+        try:
+            snap = tracker.connection_stats_snapshot()
+            total_active = snap.get("active_connections", 0)
+            IPFS_SWARM_CONNECTIONS_TOTAL.set(total_active)
+
+            # Active connections by transport & direction
+            by_transport = snap.get("active_by_transport", {})
+            by_direction = snap.get("active_by_direction", {})
+            for t, count in by_transport.items():
+                IPFS_SWARM_CONNECTIONS.labels(transport=t, direction="all").set(count)
+            for d, count in by_direction.items():
+                IPFS_SWARM_CONNECTIONS.labels(transport="all", direction=d).set(count)
+
+            # Active Peers by Age Bucket
+            age_dist = snap.get("active_connections_lifespan_distribution", {})
+            for bucket, count in age_dist.items():
+                IPFS_SWARM_PEERS_BY_AGE.labels(age_bucket=bucket).set(count)
+
+            # Active streams by protocol
+            if hasattr(tracker, "stream_stats_snapshot"):
+                stream_snap = tracker.stream_stats_snapshot()
+                open_by_proto = stream_snap.get("open_streams_by_protocol", {})
+                for proto, count in open_by_proto.items():
+                    IPFS_STREAMS_ACTIVE.labels(protocol=proto).set(count)
+        except Exception:
+            pass
 
 
 class MetricsBlockStore:

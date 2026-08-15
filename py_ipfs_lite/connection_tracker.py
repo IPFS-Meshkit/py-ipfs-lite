@@ -355,6 +355,15 @@ class ConnectionStatsTracker(INotifee):
         if conn_meta["muxer"] != "unknown":
             stats.muxer = conn_meta["muxer"]
 
+        try:
+            from py_ipfs_lite.metrics import IPFS_SWARM_CONNECTS_TOTAL
+
+            IPFS_SWARM_CONNECTS_TOTAL.labels(
+                transport=conn_meta.get("transport", "unknown")
+            ).inc()
+        except Exception:
+            pass
+
         logger.debug(
             "notifee: peer connected: %s (conns: %d, total: %d, dir: %s, "
             "transport: %s)",
@@ -432,6 +441,22 @@ class ConnectionStatsTracker(INotifee):
         for key, record in list(self.streams.items()):
             if self._record_on_conn(record, conn, conn_muxed_id):
                 self._finalize_record(key, record, now_mono)
+
+        try:
+            from py_ipfs_lite.metrics import (
+                IPFS_SWARM_DISCONNECT_REASONS_TOTAL,
+                IPFS_SWARM_DISCONNECTS_TOTAL,
+            )
+
+            t_val = (
+                conn_meta.get("transport")
+                if conn_meta
+                else (stats.transport if stats else "unknown")
+            ) or "unknown"
+            IPFS_SWARM_DISCONNECTS_TOTAL.labels(transport=t_val).inc()
+            IPFS_SWARM_DISCONNECT_REASONS_TOTAL.labels(reason_hint=reason_hint).inc()
+        except Exception:
+            pass
 
         logger.debug(
             "notifee: peer disconnected: %s (duration: %s, hint: %s, disconns: %d)",
