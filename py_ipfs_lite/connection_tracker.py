@@ -71,6 +71,7 @@ class StreamRecord:
     duration: float | None = None
     was_reset: bool = False
     suspected_leak: bool = False
+    counted_in_proto_total: bool = False
 
     @property
     def stream_ref(self) -> Any:
@@ -290,6 +291,7 @@ class ConnectionStatsTracker(INotifee):
         self.total_inbound_opened: int = 0
         self.total_outbound_closed: int = 0
         self.total_inbound_closed: int = 0
+        self.total_streams_by_protocol: dict[str, int] = {}
         self._conn_meta: dict[int, dict[str, Any]] = {}
         self.recent_disconnections: deque[dict[str, Any]] = deque(maxlen=500)
 
@@ -810,6 +812,12 @@ class ConnectionStatsTracker(INotifee):
                     peer_stats.by_protocol.get(new_bucket, 0) + 1
                 )
 
+        if record.protocol and record.protocol != "unknown" and not record.counted_in_proto_total:
+            self.total_streams_by_protocol[record.protocol] = (
+                self.total_streams_by_protocol.get(record.protocol, 0) + 1
+            )
+            record.counted_in_proto_total = True
+
     # ------------------------------------------------------------------
     # Leak detection
     # ------------------------------------------------------------------
@@ -1135,6 +1143,11 @@ class ConnectionStatsTracker(INotifee):
                 dump["avg_lifetime_seconds"] = None
             per_peer.append(dump)
 
+        open_by_proto: dict[str, int] = {}
+        for r in self.streams.values():
+            proto = r.protocol or "unknown"
+            open_by_proto[proto] = open_by_proto.get(proto, 0) + 1
+
         active_outbound = sum(
             1 for r in self.streams.values() if r.direction == "outbound"
         )
@@ -1152,6 +1165,8 @@ class ConnectionStatsTracker(INotifee):
             "TotalInboundOpened": self.total_inbound_opened,
             "TotalOutboundClosed": self.total_outbound_closed,
             "TotalInboundClosed": self.total_inbound_closed,
+            "open_streams_by_protocol": open_by_proto,
+            "total_streams_by_protocol": dict(self.total_streams_by_protocol),
             "ByDirection": {
                 "active": {
                     "outbound": active_outbound,
