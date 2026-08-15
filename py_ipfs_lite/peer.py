@@ -746,8 +746,8 @@ class Peer:
                     )
 
                 if hasattr(raw_swarm, "auto_connector"):
-                    # 30s interval — frequent enough to replace dropped peers
-                    raw_swarm.auto_connector.auto_connect_interval = 30.0
+                    # 15s interval — replenishes churn smoothly into the 300-500 operating window
+                    raw_swarm.auto_connector.auto_connect_interval = 15.0
 
             maddrs = [
                 Multiaddr(a) if isinstance(a, str) else a for a in self._listen_addrs
