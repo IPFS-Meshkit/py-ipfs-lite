@@ -525,7 +525,7 @@ class ConnectionStatsTracker(INotifee):
                     break
         for pid in to_remove:
             self.stats.pop(pid, None)
-            self.peer_streams.pop(pid, None)
+            self.peer_stream_stats.pop(pid, None)
             self._peer_lifetime.pop(pid, None)
 
         if len(self._conn_meta) > 2000:

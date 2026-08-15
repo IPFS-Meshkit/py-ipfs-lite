@@ -636,27 +636,36 @@ async def debug_memory(request: Request) -> Any:
 
     # Introspect Trio tasks via GC
     task_counts: Counter[str] = Counter()
-    task_objs = [o for o in all_objs if type(o).__name__ == "Task"]
-    for t in task_objs:
-        if hasattr(t, "coro") and hasattr(t.coro, "cr_code"):
-            co = t.coro.cr_code
-            task_counts[f"{co.co_filename.split('/')[-1]}:{co.co_name}:{co.co_firstlineno}"] += 1
-        else:
-            task_counts[getattr(t, "name", "unknown")] += 1
+    try:
+        task_objs = [o for o in all_objs if type(o).__name__ == "Task"]
+        for t in task_objs:
+            if hasattr(t, "coro") and hasattr(t.coro, "cr_code"):
+                co = t.coro.cr_code
+                task_counts[f"{co.co_filename.split('/')[-1]}:{co.co_name}:{co.co_firstlineno}"] += 1
+            else:
+                task_counts[getattr(t, "name", "unknown")] += 1
+    except Exception:
+        pass
 
     # Introspect referrers of ServerQuicConnection
     server_conns = [o for o in all_objs if type(o).__name__ == "ServerQuicConnection"]
     server_conn_referrers = []
-    if server_conns:
-        for r in gc.get_referrers(server_conns[0])[:5]:
-            if isinstance(r, dict):
-                server_conn_referrers.append(f"dict(keys={list(r.keys())[:5]})")
-            else:
-                server_conn_referrers.append(f"{type(r).__name__}: {str(r)[:80]}")
+    try:
+        if server_conns:
+            for r in gc.get_referrers(server_conns[0])[:5]:
+                try:
+                    if isinstance(r, dict):
+                        server_conn_referrers.append(f"dict(keys={list(r.keys())[:5]})")
+                    else:
+                        server_conn_referrers.append(f"{type(r).__name__}: {str(r)[:80]}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     # Test malloc_trim
-    rss_before_trim = 0
-    rss_after_trim = 0
+    rss_before_trim = 0.0
+    rss_after_trim = 0.0
     try:
         import os, psutil, ctypes
         proc = psutil.Process(os.getpid())
@@ -674,7 +683,7 @@ async def debug_memory(request: Request) -> Any:
             "rss_after_trim_mb": round(rss_after_trim, 2),
             "server_conns_count": len(server_conns),
             "server_conn_referrers": server_conn_referrers,
-            "top_tasks": task_counts.most_common(20),
+            "top_tasks": [{"task": k, "count": int(v)} for k, v in task_counts.most_common(20)],
             "top_by_count": top_by_count,
             "top_by_size": top_by_size,
             "subsystems": subsystems,

@@ -981,6 +981,15 @@ class Peer:
                         "Resource-leak sweep: no leaks (open streams: %d)",
                         len(self.connection_tracker.streams),
                     )
+
+                # Periodically trigger GC and glibc malloc_trim to return free memory to OS
+                try:
+                    import gc, ctypes
+                    gc.collect()
+                    libc = ctypes.CDLL("libc.so.6")
+                    libc.malloc_trim(0)
+                except Exception:
+                    pass
             except Exception as e:
                 logger.debug(f"Stream leak monitor error: {e}")
 
