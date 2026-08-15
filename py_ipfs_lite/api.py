@@ -614,9 +614,7 @@ async def debug_memory(request: Request) -> Any:
                 else None
             )
             subsystems["swarm_listeners_len"] = (
-                len(raw_swarm.listeners)
-                if hasattr(raw_swarm, "listeners")
-                else None
+                len(raw_swarm.listeners) if hasattr(raw_swarm, "listeners") else None
             )
             if hasattr(raw_swarm, "transport_manager"):
                 tm = raw_swarm.transport_manager
