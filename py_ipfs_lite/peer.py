@@ -718,12 +718,9 @@ class Peer:
                 raw_swarm.connection_config.high_watermark = (
                     self.config.conn_mgr_high_water
                 )
-                # Hard cap: high_watermark (40) + burst buffer (10) = 50 total.
-                # Limits inbound TCP/YAMUX from Kubo to 30 on top of the 20
-                # outbound QUIC maintained by auto-connector. Beyond 50 the
-                # Python event loop saturates from concurrent DHT handlers.
+                # Hard cap: high_watermark (500) + burst buffer (50) = 550 total.
                 raw_swarm.connection_config.max_connections = (
-                    self.config.conn_mgr_high_water + 10
+                    self.config.conn_mgr_high_water + 50
                 )
 
                 # Update the inbound limiter to match the new caps.
