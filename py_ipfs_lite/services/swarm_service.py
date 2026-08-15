@@ -24,7 +24,7 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
     network = raw_host.get_network()
     peerstore = raw_host.get_peerstore()
     result = []
-    seen: set = set()
+    seen: set[str] = set()
 
     # Primary source: swarm connections dict.
     # NOTE: we intentionally do NOT check `is_closed` here.
@@ -47,6 +47,7 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
         result.append({"peer": pid_str, "addrs": addrs})
 
     return SwarmPeers(count=len(result), peers=result)
+
 
 async def count_connections(peer: Peer) -> int:
     if peer.host is None:

@@ -350,11 +350,10 @@ class _StubHost:
 
 
 @pytest.mark.trio
-async def test_ping_timeout_closes_peer_connection(monkeypatch):
+async def test_ping_timeout_does_not_close_connection(monkeypatch):
     """
-    A keep-alive ping that times out must close the peer's connection(s) so
-    the orphaned ping stream is reset and counted as closed.  Before the fix,
-    move_on_after swallowed the cancellation and the stream leaked forever.
+    A keep-alive ping that times out is ignored so transient slow responses do
+    not trigger a reconnect churn loop. Dead connections are evicted by QUIC idle timeout.
     """
     from py_ipfs_lite.peer import Peer
 
@@ -363,7 +362,7 @@ async def test_ping_timeout_closes_peer_connection(monkeypatch):
             self.host = host
 
         async def ping(self, peer_id: Any, ping_amt: int = 1) -> None:
-            await trio.sleep_forever()  # never responds -> timeout
+            raise TimeoutError("ping timed out")
 
     monkeypatch.setattr("libp2p.host.ping.PingService", _StubPingService)
 
@@ -373,7 +372,7 @@ async def test_ping_timeout_closes_peer_connection(monkeypatch):
 
     await peer._ping_peer("peer1", timeout=0.05)
 
-    assert peer.host.get_network().closed_peers == ["peer1"]
+    assert peer.host.get_network().closed_peers == []
 
 
 @pytest.mark.trio
@@ -399,7 +398,10 @@ async def test_ping_success_does_not_close_connection(monkeypatch):
 
 
 @pytest.mark.trio
-async def test_ping_error_closes_peer_connection(monkeypatch):
+async def test_ping_error_does_not_close_connection(monkeypatch):
+    """
+    A keep-alive ping that errors is ignored to prevent churn loops from transient resets.
+    """
     from py_ipfs_lite.peer import Peer
 
     class _StubPingService:
@@ -417,7 +419,7 @@ async def test_ping_error_closes_peer_connection(monkeypatch):
 
     await peer._ping_peer("peer1", timeout=0.05)
 
-    assert peer.host.get_network().closed_peers == ["peer1"]
+    assert peer.host.get_network().closed_peers == []
 
 
 @pytest.mark.trio

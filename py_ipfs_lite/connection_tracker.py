@@ -1,8 +1,9 @@
+import logging
+import time
+import weakref
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import logging
-import time
 from typing import Any
 
 from libp2p.abc import INetConn, INetStream, INetwork, INotifee
@@ -48,8 +49,6 @@ class PeerStreamStats(BaseModel):
     avg_lifetime_seconds: float | None = None
     by_protocol: dict[str, int] = {}
 
-
-import weakref
 
 @dataclass
 class StreamRecord:
@@ -131,7 +130,7 @@ def _stream_id(stream: INetStream) -> str | None:
 
 
 def _extract_conn_details(conn: INetConn) -> dict[str, Any]:
-    """Extract multiaddr, direction, transport, security, and muxer from a connection."""
+    """Extract multiaddr, direction, transport, security, and muxer."""
     transport = "unknown"
     security = "unknown"
     muxer = "unknown"
@@ -224,7 +223,9 @@ def _extract_conn_details(conn: INetConn) -> dict[str, Any]:
     }
 
 
-def _extract_transport_info(conn: INetConn) -> tuple[str | None, str | None, str | None]:
+def _extract_transport_info(
+    conn: INetConn,
+) -> tuple[str | None, str | None, str | None]:
     """Extract (transport, security, muxer) from connection."""
     details = _extract_conn_details(conn)
     return (
@@ -355,7 +356,8 @@ class ConnectionStatsTracker(INotifee):
             stats.muxer = conn_meta["muxer"]
 
         logger.debug(
-            "notifee: peer connected: %s (conns: %d, total: %d, dir: %s, transport: %s)",
+            "notifee: peer connected: %s (conns: %d, total: %d, dir: %s, "
+            "transport: %s)",
             peer_id,
             stats.current_connections,
             self.total_connected_events,
@@ -403,9 +405,21 @@ class ConnectionStatsTracker(INotifee):
             "disconnected_at": now_ts,
             "duration_seconds": round(duration, 3) if duration is not None else None,
             "direction": conn_meta.get("direction") if conn_meta else "unknown",
-            "transport": conn_meta.get("transport") if conn_meta else (stats.transport if stats else None),
-            "security": conn_meta.get("security") if conn_meta else (stats.security if stats else None),
-            "muxer": conn_meta.get("muxer") if conn_meta else (stats.muxer if stats else None),
+            "transport": (
+                conn_meta.get("transport")
+                if conn_meta
+                else (stats.transport if stats else None)
+            ),
+            "security": (
+                conn_meta.get("security")
+                if conn_meta
+                else (stats.security if stats else None)
+            ),
+            "muxer": (
+                conn_meta.get("muxer")
+                if conn_meta
+                else (stats.muxer if stats else None)
+            ),
             "remote_addr": conn_meta.get("remote_addr") if conn_meta else None,
             "streams_served": streams_served,
             "protocols": sorted(protos),
@@ -420,7 +434,7 @@ class ConnectionStatsTracker(INotifee):
                 self._finalize_record(key, record, now_mono)
 
         logger.debug(
-            "notifee: peer disconnected: %s (duration: %s, hint: %s, total_disconns: %d)",
+            "notifee: peer disconnected: %s (duration: %s, hint: %s, disconns: %d)",
             peer_id,
             f"{duration:.2f}s" if duration is not None else "unknown",
             reason_hint,
@@ -434,7 +448,7 @@ class ConnectionStatsTracker(INotifee):
         self._network = network
 
     def connection_stats_snapshot(self) -> dict[str, Any]:
-        """Snapshot of rich connection lifecycle metrics for debugging and monitoring."""
+        """Snapshot of connection lifecycle metrics for debugging."""
         active_conns = 0
         active_by_transport: dict[str, int] = {}
         active_by_direction: dict[str, int] = {}
@@ -468,10 +482,18 @@ class ConnectionStatsTracker(INotifee):
         lifespan_dist = {
             "under_5s (failed/transient)": sum(1 for d in durations if d < 5.0),
             "5s_to_35s (DHT query hops)": sum(1 for d in durations if 5.0 <= d < 35.0),
-            "35s_to_2m (short sessions)": sum(1 for d in durations if 35.0 <= d < 120.0),
-            "2m_to_5m (moderate sessions)": sum(1 for d in durations if 120.0 <= d < 300.0),
-            "5m_to_10m (extended sessions)": sum(1 for d in durations if 300.0 <= d < 600.0),
-            "10m_to_30m (long sessions)": sum(1 for d in durations if 600.0 <= d < 1800.0),
+            "35s_to_2m (short sessions)": (
+                sum(1 for d in durations if 35.0 <= d < 120.0)
+            ),
+            "2m_to_5m (moderate sessions)": (
+                sum(1 for d in durations if 120.0 <= d < 300.0)
+            ),
+            "5m_to_10m (extended sessions)": (
+                sum(1 for d in durations if 300.0 <= d < 600.0)
+            ),
+            "10m_to_30m (long sessions)": (
+                sum(1 for d in durations if 600.0 <= d < 1800.0)
+            ),
             "over_30m (stable peers)": sum(1 for d in durations if d >= 1800.0),
         }
 
@@ -489,8 +511,12 @@ class ConnectionStatsTracker(INotifee):
             "under_2m": sum(1 for d in active_durations_dedup if d < 120.0),
             "2m_to_5m": sum(1 for d in active_durations_dedup if 120.0 <= d < 300.0),
             "5m_to_10m": sum(1 for d in active_durations_dedup if 300.0 <= d < 600.0),
-            "10m_to_30m": sum(1 for d in active_durations_dedup if 600.0 <= d < 1800.0),
-            "over_30m (long-lived stable)": sum(1 for d in active_durations_dedup if d >= 1800.0),
+            "10m_to_30m": (
+                sum(1 for d in active_durations_dedup if 600.0 <= d < 1800.0)
+            ),
+            "over_30m (long-lived stable)": (
+                sum(1 for d in active_durations_dedup if d >= 1800.0)
+            ),
         }
 
         # Reason hints distribution
@@ -534,6 +560,7 @@ class ConnectionStatsTracker(INotifee):
         key = self._stream_key(stream)
         peer_id = _stream_peer_id(stream) or "unknown"
 
+        stream_ref_val: Any
         try:
             stream_ref_val = weakref.ref(stream)
         except Exception:

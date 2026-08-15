@@ -406,6 +406,7 @@ class Peer:
         self.connection_tracker: ConnectionStatsTracker | None = None
         self._auto_connector = None
         self._connection_pruner = None
+        self._inflight_pings: set[Any] = set()
 
     @classmethod
     async def new(
@@ -735,10 +736,11 @@ class Peer:
                         raw_swarm.connection_config.max_connections
                         - raw_swarm.connection_config.min_connections,
                     )
-                    raw_swarm._inbound_limiter = (
-                        __import__("trio").CapacityLimiter(max_inbound)
+                    raw_swarm._inbound_limiter = __import__("trio").CapacityLimiter(
+                        max_inbound
                     )
                     import logging as _logging
+
                     _logging.getLogger(__name__).info(
                         "Updated _inbound_limiter to %d slots (max=%d, min=%d)",
                         max_inbound,
@@ -791,7 +793,8 @@ class Peer:
             raise
 
     async def _keep_alive_loop(self) -> None:
-        """Periodically ping all connected peers to keep idle connections alive.
+        """
+        Periodically ping all connected peers to keep idle connections alive.
 
         Ping is a pure keepalive heartbeat — it does NOT gate connection
         liveness.  Dead connections are evicted by QUIC's 600 s idle timeout
@@ -809,7 +812,9 @@ class Peer:
             return
 
         while True:
-            await trio.sleep(75.0)  # ping every 75s — just under the 90s QUIC idle timeout
+            await trio.sleep(
+                75.0
+            )  # ping every 75s — just under the 90s QUIC idle timeout
             try:
                 network = raw_host.get_network()
                 connected_peers = set()
@@ -843,7 +848,7 @@ class Peer:
                 # Launch in small batches with a short sleep between batches
                 # to spread the timeout expirations over time
                 for i in range(0, len(peers_to_ping), MAX_CONCURRENT_PINGS):
-                    batch = peers_to_ping[i:i + MAX_CONCURRENT_PINGS]
+                    batch = peers_to_ping[i : i + MAX_CONCURRENT_PINGS]
                     for peer_id in batch:
                         if peer_id not in self._inflight_pings:
                             self._nursery.start_soon(_ping_tracked, peer_id)
@@ -853,7 +858,8 @@ class Peer:
                 logger.debug(f"Keep-alive loop error: {e}")
 
     async def _connection_pruner_loop(self) -> None:
-        """Actively evict connections when above high_watermark.
+        """
+        Actively evict connections when above high_watermark.
 
         The swarm's ``max_connections`` cap only blocks NEW connections.
         Existing inbound connections from DHT peers can push us to 500+
@@ -884,7 +890,9 @@ class Peer:
                 to_evict = total - low
                 logger.info(
                     "Connection pruner: %d connections > high_watermark %d, evicting %d",
-                    total, high, to_evict,
+                    total,
+                    high,
+                    to_evict,
                 )
 
                 # Prefer to evict peers with no active named streams (protocol=None)
@@ -893,9 +901,7 @@ class Peer:
                     conns = network.connections.get(peer_id, [])
                     conn_list = conns if isinstance(conns, list) else [conns]
                     # Prefer to keep connections that have established mux
-                    has_mux = any(
-                        not getattr(c, "is_closed", False) for c in conn_list
-                    )
+                    has_mux = any(not getattr(c, "is_closed", False) for c in conn_list)
                     return 1 if has_mux else 0
 
                 # Sort: evict closed/trivial connections first
@@ -961,9 +967,12 @@ class Peer:
                                             continue  # Protocol negotiated, leave alone
                                         open_s = getattr(stream, "open_seconds", None)
                                         if open_s is None:
-                                            created = getattr(stream, "_created_at", None)
+                                            created = getattr(
+                                                stream, "_created_at", None
+                                            )
                                             if created:
                                                 import time as _t
+
                                                 open_s = _t.monotonic() - created
                                         if open_s is not None and open_s > threshold:
                                             try:
@@ -978,9 +987,9 @@ class Peer:
             except Exception as e:
                 logger.debug(f"Stream leak monitor error: {e}")
 
-
     async def _ping_peer(self, peer_id: Any, timeout: float = 5.0) -> None:
-        """Send a single keepalive ping to *peer_id*.
+        """
+        Send a single keepalive ping to *peer_id*.
 
         A ping failure is completely ignored — the connection is left open.
         Dead connections are detected by QUIC's 600 s idle timeout, not by
@@ -1004,7 +1013,9 @@ class Peer:
 
         from libp2p.abc import IHost
 
-        peer_id_str = peer_id.to_base58()
+        peer_id_str = (
+            peer_id.to_base58() if hasattr(peer_id, "to_base58") else str(peer_id)
+        )
         ping_service = PingService(cast(IHost, raw_host))
         try:
             # We explicitly do NOT use trio.fail_after() here.

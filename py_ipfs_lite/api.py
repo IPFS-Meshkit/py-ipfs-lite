@@ -582,8 +582,8 @@ async def debug_memory(request: Request) -> Any:
     gc.collect()
 
     peer: Peer = request.app.state.peer
-    counts: Counter = Counter()
-    sizes: Counter = Counter()
+    counts: Counter[str] = Counter()
+    sizes: Counter[str] = Counter()
     all_objs = gc.get_objects()
     for obj in all_objs:
         t_name = f"{type(obj).__module__}.{type(obj).__name__}"
@@ -605,22 +605,36 @@ async def debug_memory(request: Request) -> Any:
     # Subsystem inspect
     subsystems: dict[str, Any] = {}
     try:
-        raw_swarm = peer.host._host.get_network()  # type: ignore
-        subsystems["swarm_connections_len"] = len(raw_swarm.connections) if hasattr(raw_swarm, "connections") else None
-        subsystems["swarm_listeners_len"] = len(raw_swarm.listeners) if hasattr(raw_swarm, "listeners") else None
-        if hasattr(raw_swarm, "transport_manager"):
-            tm = raw_swarm.transport_manager
-            subsystems["transports"] = [type(t).__name__ for t in getattr(tm, "transports", {}).values()]
+        raw_host = getattr(peer.host, "_host", peer.host) if peer.host else None
+        if raw_host is not None:
+            raw_swarm = raw_host.get_network()  # type: ignore
+            subsystems["swarm_connections_len"] = (
+                len(raw_swarm.connections)
+                if hasattr(raw_swarm, "connections")
+                else None
+            )
+            subsystems["swarm_listeners_len"] = (
+                len(raw_swarm.listeners)
+                if hasattr(raw_swarm, "listeners")
+                else None
+            )
+            if hasattr(raw_swarm, "transport_manager"):
+                tm = raw_swarm.transport_manager
+                subsystems["transports"] = [
+                    type(t).__name__ for t in getattr(tm, "transports", {}).values()
+                ]
     except Exception as e:
         subsystems["swarm_err"] = str(e)
 
     try:
-        ps = peer.host.get_peerstore()
-        subsystems["peerstore_peers_count"] = len(ps.peer_ids())
-        if hasattr(ps, "peer_data_map"):
-            subsystems["peer_data_map_len"] = len(ps.peer_data_map)
-        if hasattr(ps, "peer_record_map"):
-            subsystems["peer_record_map_len"] = len(ps.peer_record_map)
+        raw_host = getattr(peer.host, "_host", peer.host) if peer.host else None
+        if raw_host is not None and hasattr(raw_host, "get_peerstore"):
+            ps = raw_host.get_peerstore()
+            subsystems["peerstore_peers_count"] = len(ps.peer_ids())
+            if hasattr(ps, "peer_data_map"):
+                subsystems["peer_data_map_len"] = len(ps.peer_data_map)
+            if hasattr(ps, "peer_record_map"):
+                subsystems["peer_record_map_len"] = len(ps.peer_record_map)
     except Exception as e:
         subsystems["peerstore_err"] = str(e)
 
