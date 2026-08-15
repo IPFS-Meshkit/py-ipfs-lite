@@ -809,9 +809,7 @@ class Peer:
             return
 
         while True:
-            await trio.sleep(
-                75.0
-            )  # ping every 75s — just under the 90s QUIC idle timeout
+            await trio.sleep(180.0)  # Sweep every 3 minutes
             try:
                 network = raw_host.get_network()
                 connected_peers = set()
@@ -821,37 +819,30 @@ class Peer:
                         if any(not getattr(c, "is_closed", False) for c in conns_list):
                             connected_peers.add(peer_id)
 
-                # Cap the number of concurrent pings to avoid a cancellation storm.
-                # With 150 high_watermark, pinging all at once means 150 concurrent
-                # trio.fail_after timeouts firing simultaneously — each one creates
-                # an Exception object and burns CPU. Stagger them in batches.
+                if not connected_peers:
+                    continue
+
                 if not hasattr(self, "_inflight_pings"):
                     self._inflight_pings = set()
 
-                MAX_CONCURRENT_PINGS = 20  # process 20 at a time
+                # Transport-level keep-alives (QUIC PING frames, Yamux PING frames)
+                # maintain underlying connections. Only ping up to 5 idle peers per cycle.
+                peers_to_ping = [
+                    p for p in connected_peers if p not in self._inflight_pings
+                ][:5]
 
-                async def _ping_tracked(peer_id: Any) -> None:
+                for peer_id in peers_to_ping:
                     if peer_id in self._inflight_pings:
-                        return
+                        continue
                     self._inflight_pings.add(peer_id)
                     try:
                         await self._ping_peer(peer_id)
+                    except Exception as e:
+                        logger.debug(f"Keep-alive ping error for {peer_id}: {e}")
                     finally:
                         self._inflight_pings.discard(peer_id)
-
-                peers_to_ping = [
-                    p for p in connected_peers if p not in self._inflight_pings
-                ]
-                # Launch in small batches with a short sleep between batches
-                # to spread the timeout expirations over time
-                for i in range(0, len(peers_to_ping), MAX_CONCURRENT_PINGS):
-                    batch = peers_to_ping[i : i + MAX_CONCURRENT_PINGS]
-                    for peer_id in batch:
-                        if peer_id not in self._inflight_pings:
-                            self._nursery.start_soon(_ping_tracked, peer_id)
-                            await trio.sleep(0.1)  # 100ms stagger between individual peer pings
-                    if i + MAX_CONCURRENT_PINGS < len(peers_to_ping):
-                        await trio.sleep(2.0)  # 2s gap between batches
+                    # 500ms spacing between individual pings
+                    await trio.sleep(0.5)
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
 
