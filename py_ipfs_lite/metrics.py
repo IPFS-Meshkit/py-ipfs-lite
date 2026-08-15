@@ -115,7 +115,8 @@ IPFS_STREAMS_RESETS_TOTAL = Counter(
     "ipfs_streams_resets_total", "Total number of stream resets observed"
 )
 
-# System & Process Performance
+IPFS_PROCESS_PID = Gauge("ipfs_process_pid", "Process ID of the IPFS-Lite daemon")
+
 IPFS_PROCESS_CPU_PERCENT = Gauge(
     "ipfs_process_cpu_percent", "Current process CPU utilization percentage"
 )
@@ -139,21 +140,59 @@ IPFS_PROCESS_UPTIME_SECONDS = Gauge(
 )
 
 _PROCESS_START_TIME = time.time()
+_PROCESS: Any = None
+_LAST_CPU_TIMES: Any = None
+_LAST_CPU_CHECK_TIME: float = 0.0
+
+try:
+    import psutil
+
+    _PROCESS = psutil.Process(os.getpid())
+    _LAST_CPU_TIMES = _PROCESS.cpu_times()
+    _LAST_CPU_CHECK_TIME = time.time()
+    _PROCESS.cpu_percent(interval=None)
+except Exception:
+    pass
 
 
 def update_live_metrics(peer: Any) -> None:
     """Collect and update all dynamic gauges and counters from the live peer."""
+    global _PROCESS, _LAST_CPU_TIMES, _LAST_CPU_CHECK_TIME
+
     # Process Metrics
     try:
-        import psutil
+        if _PROCESS is None:
+            import psutil
 
-        proc = psutil.Process(os.getpid())
-        IPFS_PROCESS_CPU_PERCENT.set(proc.cpu_percent(interval=None))
-        mem = proc.memory_info()
+            _PROCESS = psutil.Process(os.getpid())
+            _LAST_CPU_TIMES = _PROCESS.cpu_times()
+            _LAST_CPU_CHECK_TIME = time.time()
+            _PROCESS.cpu_percent(interval=None)
+
+        IPFS_PROCESS_PID.set(_PROCESS.pid)
+
+        now = time.time()
+        cpu_val = _PROCESS.cpu_percent(interval=None)
+
+        # High-precision delta fallback
+        if _LAST_CPU_TIMES is not None and (now - _LAST_CPU_CHECK_TIME) >= 0.5:
+            curr_times = _PROCESS.cpu_times()
+            user_delta = curr_times.user - _LAST_CPU_TIMES.user
+            sys_delta = curr_times.system - _LAST_CPU_TIMES.system
+            time_delta = now - _LAST_CPU_CHECK_TIME
+            if time_delta > 0:
+                calc_cpu = ((user_delta + sys_delta) / time_delta) * 100.0
+                if cpu_val == 0.0 and calc_cpu > 0.0:
+                    cpu_val = calc_cpu
+            _LAST_CPU_TIMES = curr_times
+            _LAST_CPU_CHECK_TIME = now
+
+        IPFS_PROCESS_CPU_PERCENT.set(round(cpu_val, 2))
+        mem = _PROCESS.memory_info()
         IPFS_PROCESS_MEMORY_RSS_BYTES.set(mem.rss)
         IPFS_PROCESS_MEMORY_VMS_BYTES.set(mem.vms)
-        if hasattr(proc, "num_fds"):
-            IPFS_PROCESS_OPEN_FDS.set(proc.num_fds())
+        if hasattr(_PROCESS, "num_fds"):
+            IPFS_PROCESS_OPEN_FDS.set(_PROCESS.num_fds())
     except Exception:
         pass
 
