@@ -207,8 +207,17 @@ def update_live_metrics(peer: Any) -> None:
     tracker = getattr(peer, "connection_tracker", None)
     if tracker is not None:
         try:
+            if getattr(tracker, "_network", None) is None and raw_swarm is not None:
+                tracker._network = raw_swarm
             snap = tracker.connection_stats_snapshot()
             total_active = snap.get("active_connections", 0)
+            if total_active == 0 and raw_swarm is not None:
+                try:
+                    conns_map = getattr(raw_swarm, "connections", {})
+                    for c_list in conns_map.values():
+                        total_active += len(c_list) if isinstance(c_list, list) else 1
+                except Exception:
+                    pass
             IPFS_SWARM_CONNECTIONS_TOTAL.set(total_active)
 
             # Active connections by transport & direction
