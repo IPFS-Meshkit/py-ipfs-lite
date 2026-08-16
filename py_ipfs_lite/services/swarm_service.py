@@ -152,8 +152,14 @@ async def connect_peer(peer: Peer, addr: str) -> None:
     from libp2p.peer.peerinfo import info_from_p2p_addr
     from multiaddr import Multiaddr
 
-    maddr = Multiaddr(addr)
-    info = info_from_p2p_addr(maddr)
+    # Parse and validate the multiaddr so invalid input returns a clean 400
+    # instead of an unhandled 500.
+    try:
+        info = info_from_p2p_addr(Multiaddr(addr))
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid peer address: {addr}"
+        ) from e
     await peer.host.connect(info)
 
 

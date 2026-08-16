@@ -216,7 +216,15 @@ async def dag_get(
     peer: Peer = request.app.state.peer
     from py_ipfs_lite.services import dag_encoding, dag_service
 
-    result = await dag_service.get_node(peer, arg)
+    try:
+        result = await dag_service.get_node(peer, arg)
+    except BlockNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Block not found: {arg}")
+    except (InvalidCidError, ValueError):
+        raise HTTPException(status_code=400, detail=f"Invalid CID: {arg}")
+    except trio.TooSlowError:
+        # Network fetch for a block that exists nowhere expired.
+        raise HTTPException(status_code=404, detail=f"Block not found: {arg}")
 
     accept = request.headers.get("accept", "")
     if result.cid_codec in ("dag-cbor", "cbor") and "application/cbor" in accept:
@@ -369,7 +377,10 @@ async def pin_add(
     peer: Peer = request.app.state.peer
     from py_ipfs_lite.services import pin_service
 
-    await pin_service.add_pin(peer, arg, recursive=recursive)
+    try:
+        await pin_service.add_pin(peer, arg, recursive=recursive)
+    except (InvalidCidError, ValueError):
+        raise HTTPException(status_code=400, detail=f"Invalid CID: {arg}")
     return JSONResponse(content={"Pins": [arg]})
 
 
