@@ -49,6 +49,14 @@ class Config:
             raise ValueError(
                 f"Unknown reprovider_strategy: '{self.reprovider_strategy}'"
             )
+        # Allow connection watermarks to be configured via env vars
+        env_low = os.getenv("IPFS_LITE_CONN_MGR_LOW_WATER")
+        if env_low is not None:
+            self.conn_mgr_low_water = int(env_low)
+        env_high = os.getenv("IPFS_LITE_CONN_MGR_HIGH_WATER")
+        if env_high is not None:
+            self.conn_mgr_high_water = int(env_high)
+
         if self.conn_mgr_low_water < 0 or self.conn_mgr_high_water < 0:
             raise ValueError("Connection watermarks cannot be negative.")
         if self.conn_mgr_low_water > self.conn_mgr_high_water:
