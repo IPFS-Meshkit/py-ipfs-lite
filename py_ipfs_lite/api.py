@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
+import trio
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -155,6 +156,10 @@ async def cat_file(
         raise HTTPException(status_code=404, detail=f"Block not found: {arg}")
     except (InvalidCidError, ValueError):
         raise HTTPException(status_code=400, detail=f"Invalid CID: {arg}")
+    except trio.TooSlowError:
+        # Network fetch for a block that exists nowhere expired.
+        # Report as not-found instead of an internal server error.
+        raise HTTPException(status_code=404, detail=f"Block not found: {arg}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -711,11 +716,14 @@ async def dht_provide(
 
     import trio
 
+    # The DHT lookup phase alone can take ~20s on a cold node, and the
+    # ADD_PROVIDER announcements go out with a per-peer QUERY_TIMEOUT, so
+    # give the whole provide a realistic budget instead of 30s.
     try:
-        with trio.fail_after(30.0):
+        with trio.fail_after(90.0):
             await peer.routing.provide(arg)
     except trio.TooSlowError:
-        raise HTTPException(status_code=504, detail="DHT provide timed out after 30s")
+        raise HTTPException(status_code=504, detail="DHT provide timed out after 90s")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to provide: {e}")
 

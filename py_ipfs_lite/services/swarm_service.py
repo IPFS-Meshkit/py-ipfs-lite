@@ -6,6 +6,8 @@ When those internals shift (as they have before), this is the one place to fix.
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import HTTPException
+
 from py_ipfs_lite.peer import Peer
 
 
@@ -160,7 +162,26 @@ async def disconnect_peer(peer: Peer, peer_id_str: str) -> None:
 
     if not peer.host:
         raise PeerNotStartedError("Peer is not initialized")
-    from libp2p.peer.id import ID
 
-    peer_id = ID.from_base58(peer_id_str)
+    from libp2p.peer.id import ID
+    from libp2p.peer.peerinfo import info_from_p2p_addr
+    from multiaddr import Multiaddr
+
+    # Accept either a bare peer ID or a full multiaddr (matching Kubo).
+    if peer_id_str.startswith("/"):
+        try:
+            info = info_from_p2p_addr(Multiaddr(peer_id_str))
+            peer_id = info.peer_id
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid peer address: {peer_id_str}"
+            ) from e
+    else:
+        try:
+            peer_id = ID.from_base58(peer_id_str)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid peer ID: {peer_id_str}"
+            ) from e
+
     await peer.host.disconnect(peer_id)
