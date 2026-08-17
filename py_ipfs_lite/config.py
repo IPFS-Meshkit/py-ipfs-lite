@@ -39,6 +39,10 @@ class Config:
     stream_monitor_interval_seconds: float = 60.0
     # Set to False to disable the background leak monitor loop entirely.
     stream_monitor_enabled: bool = True
+    # Event-bus driven libp2p Prometheus metrics (transport/muxer/security/
+    # kad/bitswap/gossipsub families) exposed on /metrics. Disable with
+    # IPFS_LITE_ENABLE_LIBP2P_METRICS=0.
+    enable_libp2p_metrics: bool = True
 
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:
@@ -56,6 +60,15 @@ class Config:
         env_high = os.getenv("IPFS_LITE_CONN_MGR_HIGH_WATER")
         if env_high is not None:
             self.conn_mgr_high_water = int(env_high)
+
+        env_metrics = os.getenv("IPFS_LITE_ENABLE_LIBP2P_METRICS")
+        if env_metrics is not None:
+            self.enable_libp2p_metrics = env_metrics.strip().lower() not in (
+                "0",
+                "false",
+                "no",
+                "off",
+            )
 
         if self.conn_mgr_low_water < 0 or self.conn_mgr_high_water < 0:
             raise ValueError("Connection watermarks cannot be negative.")

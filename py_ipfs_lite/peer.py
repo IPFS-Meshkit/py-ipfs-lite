@@ -299,6 +299,7 @@ async def setup_libp2p(
     listen_addrs: list[Any],
     datastore: Any = None,
     offline: bool = False,
+    enable_metrics: bool = True,
 ) -> Any:
     maddrs = [Multiaddr(a) if isinstance(a, str) else a for a in listen_addrs]
     noise_key_pair = create_new_x25519_key_pair()
@@ -314,12 +315,37 @@ async def setup_libp2p(
         enable_quic=has_quic,
     )
 
+    if enable_metrics:
+        attach_libp2p_metrics(raw_host)
+
     if not offline:
         raw_routing = KadDHT(
             host=raw_host, mode=DHTMode.SERVER, enable_random_walk=True
         )
         return HostAdapter(raw_host), RoutingAdapter(raw_routing)
     return HostAdapter(raw_host), None
+
+
+def attach_libp2p_metrics(raw_host: Any) -> Any:
+    """
+    Attach the event-bus driven libp2p Prometheus metrics to a host.
+
+    Falls back silently when the running libp2p build does not provide the
+    event-bus metrics API; families then simply stay absent from /metrics.
+    """
+    try:
+        import logging as _logging
+
+        from libp2p.metrics.metrics import Metrics
+
+        metrics = Metrics()
+        metrics.attach(raw_host.get_event_bus())
+        return metrics
+    except Exception as exc:
+        _logging.getLogger(__name__).debug(
+            "libp2p event-bus metrics not attached: %r", exc
+        )
+        return None
 
 
 def new_in_memory_datastore() -> Any:
@@ -391,6 +417,8 @@ class Peer:
         self.blockstore = blockstore
         self._exchange = exchange
         self.dag_service = dag_service
+
+        self.libp2p_metrics = None
 
         pin_path = None
         if self.config.blockstore_type == "filesystem" and self.config.blockstore_path:
@@ -521,6 +549,8 @@ class Peer:
             resource_manager=resource_manager,
             announce_addrs=announce_maddrs,
         )
+        if getattr(self.config, "enable_libp2p_metrics", True):
+            self.libp2p_metrics = attach_libp2p_metrics(raw_host)
         self.connection_tracker = ConnectionStatsTracker()
         raw_host.get_network().register_notifee(self.connection_tracker)
         return HostAdapter(raw_host)
@@ -695,6 +725,14 @@ class Peer:
         try:
             if self.host is None:
                 self.host = await self._create_host()
+            if (
+                self.libp2p_metrics is None
+                and getattr(self.config, "enable_libp2p_metrics", True)
+                and getattr(self.host, "_host", None) is not None
+            ):
+                self.libp2p_metrics = attach_libp2p_metrics(
+                    self.host._host  # type: ignore[union-attr]
+                )
             if self.routing is None:
                 self.routing = await self._create_routing()
             if self.blockstore is None:

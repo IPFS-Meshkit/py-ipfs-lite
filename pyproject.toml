@@ -132,4 +132,4 @@ ignore_missing_imports = true
 members = []
 
 [tool.uv.sources]
-libp2p = { git = "https://github.com/sumanjeet0012/py-libp2p.git", rev = "fix/dht-provide-improvements" }
+libp2p = { git = "https://github.com/sumanjeet0012/py-libp2p.git", rev = "metrics" }

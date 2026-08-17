@@ -73,3 +73,32 @@ async def test_metrics_idempotent_delete():
 
     after_count = IPFS_BLOCKSTORE_BLOCKS_TOTAL._value.get()
     assert after_count == before_count
+
+
+@pytest.mark.trio
+async def test_libp2p_event_bus_metrics_attached():
+    """Real Peer attaches the libp2p event-bus metrics; families render."""
+    from prometheus_client import generate_latest
+
+    from py_ipfs_lite.config import Config
+    from py_ipfs_lite.peer import Peer
+
+    config = Config(offline=True, blockstore_type="memory")
+    async with Peer(config, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer:
+        assert peer.libp2p_metrics is not None
+        body = generate_latest().decode()
+        assert "bitswap_wantlist_adds_total" in body
+        assert "kad_lookup_total" in body
+
+
+@pytest.mark.trio
+async def test_libp2p_event_bus_metrics_disabled(monkeypatch):
+    """IPFS_LITE_ENABLE_LIBP2P_METRICS=0 skips the attach."""
+    from py_ipfs_lite.config import Config
+    from py_ipfs_lite.peer import Peer
+
+    monkeypatch.setenv("IPFS_LITE_ENABLE_LIBP2P_METRICS", "0")
+    config = Config(offline=True, blockstore_type="memory")
+    assert config.enable_libp2p_metrics is False
+    async with Peer(config, listen_addrs=["/ip4/127.0.0.1/tcp/0"]) as peer:
+        assert peer.libp2p_metrics is None
