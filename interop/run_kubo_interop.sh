@@ -92,7 +92,7 @@ EXPECTED_HASH=$(shasum -a 256 "$LARGE_FILE" | awk '{print $1}')
 
 PY_ADD_OUT1=$(mktemp)
 PY_ADD_ERR1=$(mktemp)
-(cd "$PYPROJECT_DIR" && uv run python "$SCRIPT_DIR/py_peer.py" add \
+(cd "$PYPROJECT_DIR" && uv run --no-sync python "$SCRIPT_DIR/py_peer.py" add \
     --listen /ip4/127.0.0.1/tcp/0 --file "$LARGE_FILE" > "$PY_ADD_OUT1" 2>"$PY_ADD_ERR1") &
 PY_PID1=$!
 PIDS+=("$PY_PID1")
@@ -136,7 +136,7 @@ PY_FETCHED2=$(mktemp)
 PY_GET_OUT2=$(mktemp)
 PY_GET_ERR2=$(mktemp)
 
-timeout 120 bash -c "cd \"$PYPROJECT_DIR\" && uv run python \"$SCRIPT_DIR/py_peer.py\" get \
+timeout 120 bash -c "cd \"$PYPROJECT_DIR\" && uv run --no-sync python \"$SCRIPT_DIR/py_peer.py\" get \
     --listen /ip4/127.0.0.1/tcp/0 \
     --connect \"$KUBO_ADDR/p2p/$KUBO_PEER_ID\" --cid \"$KUBO_CID2\" --out \"$PY_FETCHED2\" > \"$PY_GET_OUT2\" 2>\"$PY_GET_ERR2\"" || {
     fail_test "Python get timed out or failed"
@@ -160,7 +160,7 @@ echo "════════════════════════�
 
 PY_ADD_NODE_OUT=$(mktemp)
 PY_ADD_NODE_ERR=$(mktemp)
-(cd "$PYPROJECT_DIR" && uv run python "$SCRIPT_DIR/py_peer.py" add-node \
+(cd "$PYPROJECT_DIR" && uv run --no-sync python "$SCRIPT_DIR/py_peer.py" add-node \
     --listen /ip4/127.0.0.1/tcp/0 --data '{"type":"kubo-py-interop","success":true}' > "$PY_ADD_NODE_OUT" 2>"$PY_ADD_NODE_ERR") &
 PY_NODE_PID=$!
 PIDS+=("$PY_NODE_PID")

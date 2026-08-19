@@ -75,7 +75,7 @@ func main() {
 		panic(err)
 	}
 
-	if targetAddr != "none" {
+	if targetAddr != "none" && command != "add-file" && command != "add" {
 		fmt.Println("Parsing multiaddr...")
 		maddr, err := multiaddr.NewMultiaddr(targetAddr)
 		if err != nil {

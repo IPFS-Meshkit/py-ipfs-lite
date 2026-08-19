@@ -435,6 +435,7 @@ class Peer:
         self._auto_connector = None
         self._connection_pruner = None
         self._inflight_pings: set[Any] = set()
+        self._last_good_peer: Any | None = None
 
     @classmethod
     async def new(
@@ -464,12 +465,13 @@ class Peer:
             # "/tls/1.0.0": TLSTransport(self._host_key),
         }
         has_quic = any("quic" in str(a) for a in maddrs)
-        # QUIC idle timeout = 600s to match go-libp2p defaults.
-        # DHT query connections that go idle are cleaned up by the connection
-        # manager once we hit the high watermark. The random walk is now
-        # rate-limited (300s interval, 3 concurrent) so connection accumulation
-        # from DHT queries is bounded.
-        quic_cfg = QUICTransportConfig(idle_timeout=600.0) if has_quic else None
+        # QUIC defaults now match kubo: idle timeout 30 s + PING keep-alive
+        # every 15 s (quic-go defaults kubo uses). DHT query connections
+        # that go idle are kept alive by PINGs and cleaned up by the
+        # connection manager once we hit the high watermark. The random
+        # walk is rate-limited (300s interval, 3 concurrent) so connection
+        # accumulation from DHT queries is bounded.
+        quic_cfg = QUICTransportConfig() if has_quic else None
         import os
 
         from py_ipfs_lite.config import BlockStoreType
@@ -486,9 +488,13 @@ class Peer:
                 SyncPersistentPeerStore,
             )
 
-            base_dir = os.path.dirname(self.config.blockstore_path)
-            os.makedirs(base_dir, exist_ok=True)
-            db_path = os.path.join(base_dir, "peerstore.db")
+            # Keep the persistent peerstore inside the blockstore's own
+            # directory. Placing it in dirname(blockstore_path) meant two
+            # daemons with sibling blockstores (e.g. /tmp/a/blocks and
+            # /tmp/b/blocks) shared one peerstore.db and crashed with
+            # "database is locked".
+            os.makedirs(self.config.blockstore_path, exist_ok=True)
+            db_path = os.path.join(self.config.blockstore_path, "peerstore.db")
 
             datastore = SQLiteDatastoreSync(path=db_path)
             peerstore_opt = SyncPersistentPeerStore(datastore=datastore)
@@ -532,6 +538,7 @@ class Peer:
         from libp2p.network.config import ConnectionConfig
 
         swarm_conn_cfg = ConnectionConfig(
+            min_connections=self.config.conn_mgr_low_water,
             low_watermark=self.config.conn_mgr_low_water,
             high_watermark=self.config.conn_mgr_high_water,
             max_connections=rcmgr_max,
@@ -666,8 +673,12 @@ class Peer:
                 peer_id: Any = None,
                 timeout: float = 90,
                 return_peer: bool = False,
+                session: Any = None,
             ) -> Any:
-                session = self._new_session()
+                # ``session`` lets one BitswapSession be reused across the
+                # whole DAG walk of a single fetch; without it a new session
+                # (and its DHT provider lookup) is created per block.
+                session = session if session is not None else self._new_session()
                 if return_peer:
                     with trio.fail_after(timeout):
                         data = await session.get_block(
@@ -684,10 +695,22 @@ class Peer:
                     IPFS_BITSWAP_BYTES_RECEIVED_TOTAL.inc(len(res))
                 return res
 
-            async def get_blocks_batch(self, cids: Any) -> Any:
-                session = self._new_session()
+            async def get_blocks_batch(
+                self,
+                cids: Any,
+                peer_id: Any = None,
+                timeout: float = 90,
+                batch_size: int = 32,
+                session: Any = None,
+            ) -> Any:
+                session = session if session is not None else self._new_session()
                 if hasattr(session, "get_blocks_batch"):
-                    return await session.get_blocks_batch(cids)
+                    return await session.get_blocks_batch(
+                        cids,
+                        peer_id=peer_id,
+                        timeout=timeout,
+                        batch_size=batch_size,
+                    )
                 elif hasattr(self._exchange, "get_blocks_batch"):
                     return await self._exchange.get_blocks_batch(cids)
                 else:
@@ -1133,6 +1156,7 @@ class Peer:
         discovery = BootstrapDiscovery(
             swarm=self.host.get_network(),  # type: ignore
             bootstrap_addrs=str_addrs,  # type: ignore[union-attr]
+            event_bus=self.host.get_event_bus(),
         )
         await discovery.start()
 
@@ -1278,13 +1302,18 @@ class Peer:
 
         from libp2p.bitswap.dag import is_directory_node
 
+        _get_file_self = self
+
         class _FetchAffinity:
             def __init__(self) -> None:
-                self.last_good_peer: Any | None = None
+                # Seed with the peer that served a previous fetch (persisted
+                # across calls) so child wants skip the slow broadcast.
+                self.last_good_peer: Any | None = _get_file_self._last_good_peer
 
             def record(self, peer_id: Any | None) -> None:
                 if peer_id is not None:
                     self.last_good_peer = peer_id
+                    _get_file_self._last_good_peer = peer_id
 
         affinity = _FetchAffinity()
 
@@ -1297,6 +1326,11 @@ class Peer:
             except Exception:
                 pass
 
+        # One Bitswap session per logical fetch. Creating a session per block
+        # (as the exchange adapter did) spawned N sessions and N DHT provider
+        # lookups for an N-block file.
+        psession = PeerSession(self._exchange)
+
         # Helper to isolate trio.fail_after from the async generator
         async def fetch_block_with_timeout(current_cid: Any) -> Any:
             with trio.fail_after(t_val):
@@ -1305,6 +1339,7 @@ class Peer:
                     peer_id=affinity.last_good_peer,
                     return_peer=True,
                     timeout=t_val,
+                    session=psession._session,
                 )
                 if res and isinstance(res, tuple):
                     data, peer_id = res
@@ -1359,6 +1394,7 @@ class Peer:
                                     peer_id=affinity.last_good_peer,
                                     timeout=t_val,
                                     batch_size=batch_size,
+                                    session=psession._session,
                                 )
                         except Exception as e:
                             logger.debug(

@@ -108,6 +108,9 @@ class HostAdapter:
     async def close(self) -> Any:
         return await self._host.close()
 
+    def get_event_bus(self) -> Any:
+        return self._host.get_event_bus()
+
     # Pass-through for existing usage
     def get_network(self) -> Any:
         return self._host.get_network()
