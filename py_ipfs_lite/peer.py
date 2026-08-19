@@ -465,13 +465,27 @@ class Peer:
             # "/tls/1.0.0": TLSTransport(self._host_key),
         }
         has_quic = any("quic" in str(a) for a in maddrs)
-        # QUIC defaults now match kubo: idle timeout 30 s + PING keep-alive
-        # every 15 s (quic-go defaults kubo uses). DHT query connections
-        # that go idle are kept alive by PINGs and cleaned up by the
-        # connection manager once we hit the high watermark. The random
-        # walk is rate-limited (300s interval, 3 concurrent) so connection
-        # accumulation from DHT queries is bounded.
-        quic_cfg = QUICTransportConfig() if has_quic else None
+        # QUIC idle timeout must be LONG ENOUGH that quiet-but-live
+        # connections are not evicted: the library default (30 s) matches
+        # quic-go's default kubo uses, but here it caused a churn loop —
+        # every auto-connected QUIC connection that went a few seconds
+        # without traffic was closed by the idle timer ~26-30 s after
+        # connect, so the swarm could never climb toward the high
+        # watermark.  600 s idle + PING keep-alive every 15 s (kubo
+        # parity) keeps live connections open indefinitely and only
+        # evicts truly dead peers.
+        # NEGOTIATE_TIMEOUT is raised to 60 s so security/multistream
+        # negotiations queued behind the dial burst (16-32 parallel dials
+        # per auto-connect cycle) complete instead of timing out and
+        # closing freshly established connections.
+        quic_cfg = (
+            QUICTransportConfig(
+                idle_timeout=600.0,
+                NEGOTIATE_TIMEOUT=60.0,
+            )
+            if has_quic
+            else None
+        )
         import os
 
         from py_ipfs_lite.config import BlockStoreType
