@@ -104,7 +104,9 @@ def parse_args():
 
 
 async def run_add(listen_addr: str, filepath: str):
-    config = Config(reprovide_interval_seconds=-1)
+    # offline=True: no DHT/random-walk, prevents flooding the fetcher's
+    # yamux accept channel with DHT streams and breaking bitswap stream opens.
+    config = Config(reprovide_interval_seconds=-1, offline=True)
     peer = Peer(config, listen_addrs=[listen_addr])
     try:
         await peer.start()
@@ -141,17 +143,18 @@ async def run_get(
             await peer.get_file(
                 cid_str, output_path=out_path, provider_addr=connect_addr
             )
+        print("CONTENT_SAVED", flush=True)
     except Exception as e:
         print(f"Failed to get file: {e}", file=sys.stderr)
-        return
     finally:
-        await peer.close()
-
-    print("CONTENT_SAVED", flush=True)
+        try:
+            await peer.close()
+        except BaseException:
+            pass
 
 
 async def run_add_node(listen_addr: str, data: str):
-    config = Config(reprovide_interval_seconds=-1)
+    config = Config(reprovide_interval_seconds=-1, offline=True)
     peer = Peer(config, listen_addrs=[listen_addr])
     try:
         await peer.start()
@@ -183,12 +186,14 @@ async def run_get_node(
 
         with trio.fail_after(180):
             node_data = await peer.get_node(cid_str, provider_addr=connect_addr)
-            print(f"DONE_FETCH_NODE: {json.dumps(node_data)}", flush=True)
+        print(f"DONE_FETCH_NODE: {json.dumps(node_data)}", flush=True)
     except Exception as e:
         print(f"Failed to get node: {e}", file=sys.stderr)
-        return
     finally:
-        await peer.close()
+        try:
+            await peer.close()
+        except BaseException:
+            pass
 
 
 async def run_has(listen_addr: str, cid_str: str):
@@ -235,13 +240,13 @@ async def run_pin_gc(listen_addr: str):
 
         # GC
         stats = await peer.gc()
-        print(f"GC_RECLAIMED={stats['reclaimed_blocks']}", flush=True)
-        print(f"GC_RETAINED={stats['retained_blocks']}", flush=True)
+        print(f"GC_RECLAIMED={stats.reclaimed_blocks}", flush=True)
+        print(f"GC_RETAINED={stats.retained_blocks}", flush=True)
 
         # Verify: cid1 should exist, cid2 and cid3 should be gone
-        has1 = await peer.blockstore.has(parse_cid(cid1))
-        has2 = await peer.blockstore.has(parse_cid(cid2))
-        has3 = await peer.blockstore.has(parse_cid(cid3))
+        has1 = await peer.blockstore.has(parse_cid(str(cid1)))
+        has2 = await peer.blockstore.has(parse_cid(str(cid2)))
+        has3 = await peer.blockstore.has(parse_cid(str(cid3)))
         print(f"HAS_PINNED={has1}", flush=True)
         print(f"HAS_UNPINNED_A={has2}", flush=True)
         print(f"HAS_UNPINNED_B={has3}", flush=True)
@@ -266,7 +271,7 @@ async def run_add_get_remove(listen_addr: str, data: str):
         print(f"ADDED_CID={cid_str}", flush=True)
 
         # HasBlock after add
-        cid = parse_cid(cid_str)
+        cid = parse_cid(str(cid_str))
         has = await peer.blockstore.has(cid)
         print(f"HAS_AFTER_ADD={has}", flush=True)
 

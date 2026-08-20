@@ -102,11 +102,19 @@ PY_CID1=$(wait_ready_and_parse "$PY_PID1" "$PY_ADD_OUT1" "CID=")
 echo "  Python Node: ADDR=$PY_ADDR1 CID=$PY_CID1"
 
 # Connect Kubo to Python
-ipfs swarm connect "$PY_ADDR1" > /dev/null
+KUBO_SWARM_OUT=$(mktemp)
+if ! ipfs swarm connect "$PY_ADDR1" > "$KUBO_SWARM_OUT" 2>&1; then
+    echo "  WARNING: swarm connect failed: $(cat $KUBO_SWARM_OUT)" >&2
+fi
+# Brief pause for Identify / Bitswap handshake to complete
+sleep 2
 
 KUBO_FETCHED=$(mktemp)
-timeout 120 ipfs get "$PY_CID1" -o "$KUBO_FETCHED" > /dev/null 2>&1 || {
+KUBO_GET_ERR=$(mktemp)
+timeout 120 ipfs get "$PY_CID1" -o "$KUBO_FETCHED" > /dev/null 2>"$KUBO_GET_ERR" || {
     fail_test "Kubo get timed out or failed"
+    echo "  [Kubo get error]:" >&2
+    cat "$KUBO_GET_ERR" >&2
 }
 
 if [ -f "$KUBO_FETCHED" ]; then
@@ -138,7 +146,7 @@ PY_GET_ERR2=$(mktemp)
 
 timeout 120 bash -c "cd \"$PYPROJECT_DIR\" && uv run python \"$SCRIPT_DIR/py_peer.py\" get \
     --listen /ip4/127.0.0.1/tcp/0 \
-    --connect \"$KUBO_ADDR/p2p/$KUBO_PEER_ID\" --cid \"$KUBO_CID2\" --out \"$PY_FETCHED2\" > \"$PY_GET_OUT2\" 2>\"$PY_GET_ERR2\"" || {
+    --connect \"$KUBO_ADDR\" --cid \"$KUBO_CID2\" --out \"$PY_FETCHED2\" > \"$PY_GET_OUT2\" 2>\"$PY_GET_ERR2\"" || {
     fail_test "Python get timed out or failed"
     cat "$PY_GET_ERR2" >&2
 }
@@ -170,11 +178,18 @@ PY_NODE_CID=$(wait_ready_and_parse "$PY_NODE_PID" "$PY_ADD_NODE_OUT" "CID=")
 echo "  Python Node (JSON): ADDR=$PY_NODE_ADDR CID=$PY_NODE_CID"
 
 # Connect Kubo to Python
-ipfs swarm connect "$PY_NODE_ADDR" > /dev/null
+KUBO_NODE_SWARM_OUT=$(mktemp)
+if ! ipfs swarm connect "$PY_NODE_ADDR" > "$KUBO_NODE_SWARM_OUT" 2>&1; then
+    echo "  WARNING: node swarm connect failed: $(cat $KUBO_NODE_SWARM_OUT)" >&2
+fi
+sleep 2
 
 KUBO_GET_NODE_OUT=$(mktemp)
-timeout 60 ipfs dag get "$PY_NODE_CID" > "$KUBO_GET_NODE_OUT" 2>/dev/null || {
+KUBO_DAG_GET_ERR=$(mktemp)
+timeout 60 ipfs dag get "$PY_NODE_CID" > "$KUBO_GET_NODE_OUT" 2>"$KUBO_DAG_GET_ERR" || {
     fail_test "Kubo dag get timed out or failed"
+    echo "  [Kubo dag get error]:" >&2
+    cat "$KUBO_DAG_GET_ERR" >&2
 }
 
 if grep -q "kubo-py-interop" "$KUBO_GET_NODE_OUT" 2>/dev/null; then
@@ -190,7 +205,8 @@ PIDS=("${PIDS[@]/$PY_NODE_PID}") # Remove PY_NODE_PID from array
 
 # ═══════════════════════════════════════════════════════════════
 # Cleanup temp files
-rm -f "$LARGE_FILE" "$KUBO_FETCHED" "$PY_FETCHED2" "$PY_ADD_OUT1" "$PY_ADD_ERR1" "$PY_GET_OUT2" "$PY_GET_ERR2" "$PY_ADD_NODE_OUT" "$PY_ADD_NODE_ERR" "$KUBO_GET_NODE_OUT" kubo_daemon.log
+rm -f "$LARGE_FILE" "$KUBO_FETCHED" "$PY_FETCHED2" "$PY_ADD_OUT1" "$PY_ADD_ERR1" "$PY_GET_OUT2" "$PY_GET_ERR2" "$PY_ADD_NODE_OUT" "$PY_ADD_NODE_ERR" "$KUBO_GET_NODE_OUT" kubo_daemon.log 2>/dev/null || true
+rm -f "$KUBO_SWARM_OUT" "$KUBO_GET_ERR" "$KUBO_NODE_SWARM_OUT" "$KUBO_DAG_GET_ERR" 2>/dev/null || true
 
 # ═══════════════════════════════════════════════════════════════
 echo ""

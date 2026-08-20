@@ -15,7 +15,6 @@ import (
 	"github.com/ipfs/go-datastore/sync"
 	format "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p"
 	crypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -47,22 +46,19 @@ func main() {
 		panic(err)
 	}
 
-	h, err := libp2p.New(
-		libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"),
-		libp2p.Identity(priv),
-	)
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+
+	listenAddr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/0")
 	if err != nil {
 		panic(err)
 	}
-
-	ds := sync.MutexWrap(datastore.NewMapDatastore())
 
 	fmt.Println("SetupLibp2p...")
 	h, dht, err := ipfslite.SetupLibp2p(
 		ctx,
 		priv,
 		nil,
-		[]multiaddr.Multiaddr{h.Addrs()[0]},
+		[]multiaddr.Multiaddr{listenAddr},
 		ds,
 	)
 	if err != nil {
