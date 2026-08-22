@@ -872,13 +872,16 @@ class Peer:
 
         This keeps QUIC/TCP/WS connections alive by sending application-level
         pings via the ``/ipfs/ping/1.0.0`` protocol.  Without it, idle
-        connections are closed by transport-level idle timeouts (QUIC 600 s,
+        connections are closed by transport-level idle timeouts (QUIC 30 s,
         TCP remote-close, etc.) and the auto-connector spends its entire
         budget just reconnecting.
 
-        With ~400 connections, pinging every peer every 60 s with 25-way
-        concurrency and 100 ms spacing keeps each connection well within
-        the 600 s QUIC idle window.
+        The sweep interval (15 s) matches the QUIC transport's own keep-alive
+        interval (also 15 s) and is well within the 30 s QUIC idle timeout,
+        providing a belt-and-suspenders guarantee.  With ~400 connections,
+        pinging every peer every 15 s with 25-way concurrency and
+        100 ms spacing keeps each connection well within the 30 s QUIC
+        idle window.
         """
         raw_host = getattr(self.host, "_host", self.host)
         if raw_host is None:
@@ -892,7 +895,7 @@ class Peer:
         keepalive_semaphore = trio.Semaphore(25)
 
         while True:
-            await trio.sleep(60.0)  # Sweep every 60 seconds
+            await trio.sleep(15.0)  # Sweep every 15 seconds
             try:
                 network = raw_host.get_network()
                 connected_peers = set()
@@ -912,7 +915,7 @@ class Peer:
                     p
                     for p in connected_peers
                     if p not in self._inflight_pings
-                    and now - self._last_ping_time.get(p, 0) >= 30.0
+                    and now - self._last_ping_time.get(p, 0) >= 15.0
                 ]
 
                 async def _ping_with_semaphore(peer_id):
@@ -933,7 +936,7 @@ class Peer:
                     for peer_id in peers_to_ping:
                         nursery.start_soon(_ping_with_semaphore, peer_id)
 
-                logger.debug(
+                logger.info(
                     f"Keepalive sweep: {len(peers_to_ping)} pings sent, "
                     f"{len(connected_peers)} total connected"
                 )
