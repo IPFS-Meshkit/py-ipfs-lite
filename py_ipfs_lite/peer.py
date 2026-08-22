@@ -894,6 +894,10 @@ class Peer:
 
         keepalive_semaphore = trio.Semaphore(25)
 
+        # Use the Peer's main nursery so pings are fire-and-forget.
+        # This prevents slow pings from delaying the sweep cycle.
+        nursery = getattr(self, "_nursery", None)
+
         while True:
             await trio.sleep(15.0)  # Sweep every 15 seconds
             try:
@@ -932,9 +936,10 @@ class Peer:
                             self._inflight_pings.discard(peer_id)
                         await trio.sleep(0.1)
 
-                async with trio.open_nursery() as nursery:
-                    for peer_id in peers_to_ping:
-                        nursery.start_soon(_ping_with_semaphore, peer_id)
+                # Fire-and-forget: use the Peer's main nursery so slow pings
+                # don't delay the next sweep cycle.
+                for peer_id in peers_to_ping:
+                    nursery.start_soon(_ping_with_semaphore, peer_id)
 
                 logger.info(
                     f"Keepalive sweep: {len(peers_to_ping)} pings sent, "
@@ -1089,8 +1094,8 @@ class Peer:
         Send a single keepalive ping to *peer_id*.
 
         A ping failure is completely ignored — the connection is left open.
-        Dead connections are detected by QUIC's 600 s idle timeout, not by
-        us.  Closing connections on ping failure caused a churn loop because
+        Dead connections are detected by QUIC's idle timeout, not by us.
+        Closing connections on ping failure caused a churn loop because
         Identify timeouts (common on busy peers) triggered close_peer(),
         which caused reconnects, which caused more Identify timeouts.
 
@@ -1122,7 +1127,8 @@ class Peer:
         ping_service = self._ping_service
 
         try:
-            await ping_service.ping(peer_id, ping_amt=1)
+            with trio.fail_after(timeout):
+                await ping_service.ping(peer_id, ping_amt=1)
             if self.connection_tracker:
                 self.connection_tracker.mark_ping_completed(peer_id_str)
         except Exception as e:
