@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import time
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from typing import (
@@ -435,6 +436,7 @@ class Peer:
         self._auto_connector = None
         self._connection_pruner = None
         self._inflight_pings: set[Any] = set()
+        self._ping_service: Any = None
         self._last_good_peer: Any | None = None
 
     @classmethod
@@ -868,56 +870,74 @@ class Peer:
         """
         Periodically ping all connected peers to keep idle connections alive.
 
-        Ping is a pure keepalive heartbeat — it does NOT gate connection
-        liveness.  Dead connections are evicted by QUIC's 600 s idle timeout
-        (set in ``_create_host``).
-        a churn loop: Identify timeouts (common on busy peers) counted as ping
-        failures, which closed the connection, which triggered a reconnect,
-        which caused another Identify timeout, etc.
+        This keeps QUIC/TCP/WS connections alive by sending application-level
+        pings via the ``/ipfs/ping/1.0.0`` protocol.  Without it, idle
+        connections are closed by transport-level idle timeouts (QUIC 600 s,
+        TCP remote-close, etc.) and the auto-connector spends its entire
+        budget just reconnecting.
 
-        The interval is 60 s (not 15 s) so that pinging 200+ peers with a
-        concurrency cap of 20 and a 5 s timeout per ping finishes comfortably
-        within one cycle without queuing up cascading failures.
+        With ~400 connections, pinging every peer every 60 s with 25-way
+        concurrency and 100 ms spacing keeps each connection well within
+        the 600 s QUIC idle window.
         """
         raw_host = getattr(self.host, "_host", self.host)
         if raw_host is None:
             return
 
+        if not hasattr(self, "_inflight_pings"):
+            self._inflight_pings = set()
+        if not hasattr(self, "_last_ping_time"):
+            self._last_ping_time = {}
+
+        keepalive_semaphore = trio.Semaphore(25)
+
         while True:
-            await trio.sleep(180.0)  # Sweep every 3 minutes
+            await trio.sleep(60.0)  # Sweep every 60 seconds
             try:
                 network = raw_host.get_network()
                 connected_peers = set()
                 if hasattr(network, "connections"):
                     for peer_id, conns in network.connections.items():
                         conns_list = conns if isinstance(conns, list) else [conns]
-                        if any(not getattr(c, "is_closed", False) for c in conns_list):
+                        if any(
+                            not getattr(c, "is_closed", False) for c in conns_list
+                        ):
                             connected_peers.add(peer_id)
 
                 if not connected_peers:
                     continue
 
-                if not hasattr(self, "_inflight_pings"):
-                    self._inflight_pings = set()
-
-                # Transport-level keep-alives (QUIC PING frames, Yamux PING frames)
-                # maintain underlying connections. Only ping up to 5 idle peers per cycle.
+                now = time.monotonic()
                 peers_to_ping = [
-                    p for p in connected_peers if p not in self._inflight_pings
-                ][:5]
+                    p
+                    for p in connected_peers
+                    if p not in self._inflight_pings
+                    and now - self._last_ping_time.get(p, 0) >= 30.0
+                ]
 
-                for peer_id in peers_to_ping:
-                    if peer_id in self._inflight_pings:
-                        continue
-                    self._inflight_pings.add(peer_id)
-                    try:
-                        await self._ping_peer(peer_id)
-                    except Exception as e:
-                        logger.debug(f"Keep-alive ping error for {peer_id}: {e}")
-                    finally:
-                        self._inflight_pings.discard(peer_id)
-                    # 500ms spacing between individual pings
-                    await trio.sleep(0.5)
+                async def _ping_with_semaphore(peer_id):
+                    async with keepalive_semaphore:
+                        self._inflight_pings.add(peer_id)
+                        try:
+                            await self._ping_peer(peer_id)
+                            self._last_ping_time[peer_id] = time.monotonic()
+                        except Exception as e:
+                            logger.debug(
+                                f"Keep-alive ping error for {peer_id}: {e}"
+                            )
+                        finally:
+                            self._inflight_pings.discard(peer_id)
+                        await trio.sleep(0.1)
+
+                async with trio.open_nursery() as nursery:
+                    for peer_id in peers_to_ping:
+                        nursery.start_soon(_ping_with_semaphore, peer_id)
+
+                logger.debug(
+                    f"Keepalive sweep: {len(peers_to_ping)} pings sent, "
+                    f"{len(connected_peers)} total connected"
+                )
+
             except Exception as e:
                 logger.debug(f"Keep-alive loop error: {e}")
 
@@ -1090,18 +1110,19 @@ class Peer:
         peer_id_str = (
             peer_id.to_base58() if hasattr(peer_id, "to_base58") else str(peer_id)
         )
-        ping_service = PingService(cast(IHost, raw_host))
+
+        # Reuse a single PingService so streams are cached and reused
+        # across ping cycles (avoids opening a new /ipfs/ping/1.0.0
+        # stream for every single ping).
+        if self._ping_service is None:
+            self._ping_service = PingService(cast(IHost, raw_host))
+        ping_service = self._ping_service
+
         try:
-            # We explicitly do NOT use trio.fail_after() here.
-            # ping_service.ping() has its own internal timeouts (10s for
-            # negotiation, 60s for read). If we cancel it externally, the
-            # trio.Cancelled exception bypasses libp2p's cleanup logic and
-            # permanently leaks the stream.
             await ping_service.ping(peer_id, ping_amt=1)
             if self.connection_tracker:
                 self.connection_tracker.mark_ping_completed(peer_id_str)
         except Exception as e:
-            # Log at debug — ping failure is not actionable, connection stays open.
             logger.debug(f"Keep-alive ping failed for {peer_id} (ignored): {e}")
 
     async def __aenter__(self) -> "Peer":

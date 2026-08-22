@@ -1,0 +1,8 @@
+DEV_URL = "http://52.7.183.75:5001"
+PROD_URL = "http://52.7.200.90:5001"
+DEV_ID = "12D3KooWSeyWAra8eUjNoXirq844de9EL5fVpKJ9BuiwRakrXwtD"
+PROD_ID = "12D3KooWSPH7Ki1zzrMvhjaVzKE1uX4spcdh5K6o3ijhZHUJq4wn"
+DEV_IP = "52.7.183.75"
+PROD_IP = "52.7.200.90"
+DEV_ADDR = f"/ip4/{DEV_IP}/tcp/4001/p2p/{DEV_ID}"
+PROD_ADDR = f"/ip4/{PROD_IP}/tcp/4001/p2p/{PROD_ID}"
