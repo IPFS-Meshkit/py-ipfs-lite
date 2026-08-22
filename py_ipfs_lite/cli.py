@@ -268,6 +268,17 @@ def main() -> None:
                 blockstore_path=parsed_args.blockstore_path,
                 use_ipni=parsed_args.use_ipni,
                 ipni_endpoint=parsed_args.ipni_endpoint,
+                enable_pubsub=parsed_args.enable_pubsub,
+                pubsub_topics=tuple(
+                    t.strip() for t in parsed_args.pubsub_topics.split(",")
+                )
+                if parsed_args.pubsub_topics
+                else (),
+                gossipsub_degree=parsed_args.gossipsub_degree,
+                gossipsub_degree_low=parsed_args.gossipsub_degree_low,
+                gossipsub_degree_high=parsed_args.gossipsub_degree_high,
+                gossipsub_heartbeat_interval=parsed_args.gossipsub_heartbeat_interval,
+                gossipsub_time_to_live=parsed_args.gossipsub_ttl,
             )
 
             if parsed_args.api:

@@ -86,6 +86,49 @@ def get_parser() -> argparse.ArgumentParser:
         dest="reprovide_interval_seconds",
         help="Reprovide interval in seconds",
     )
+    daemon_parser.add_argument(
+        "--enable-pubsub",
+        action=argparse.BooleanOptionalAction,
+        dest="enable_pubsub",
+        default=core_defaults.enable_pubsub,
+        help="Enable Pubsub/GossipSub",
+    )
+    daemon_parser.add_argument(
+        "--pubsub-topics",
+        type=str,
+        default=None,
+        help="Comma-separated pubsub topics to subscribe to",
+    )
+    daemon_parser.add_argument(
+        "--gossipsub-degree",
+        type=int,
+        default=core_defaults.gossipsub_degree,
+        help="GossipSub mesh degree (target peers in mesh)",
+    )
+    daemon_parser.add_argument(
+        "--gossipsub-degree-low",
+        type=int,
+        default=core_defaults.gossipsub_degree_low,
+        help="GossipSub mesh degree low bound",
+    )
+    daemon_parser.add_argument(
+        "--gossipsub-degree-high",
+        type=int,
+        default=core_defaults.gossipsub_degree_high,
+        help="GossipSub mesh degree high bound",
+    )
+    daemon_parser.add_argument(
+        "--gossipsub-heartbeat-interval",
+        type=float,
+        default=core_defaults.gossipsub_heartbeat_interval,
+        help="GossipSub heartbeat interval in seconds",
+    )
+    daemon_parser.add_argument(
+        "--gossipsub-ttl",
+        type=int,
+        default=core_defaults.gossipsub_time_to_live,
+        help="GossipSub message TTL in seconds",
+    )
 
     # Add command
     add_parser = subparsers.add_parser(

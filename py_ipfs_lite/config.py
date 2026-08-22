@@ -44,6 +44,15 @@ class Config:
     # IPFS_LITE_ENABLE_LIBP2P_METRICS=0.
     enable_libp2p_metrics: bool = True
 
+    # Pubsub/GossipSub configuration
+    enable_pubsub: bool = False
+    pubsub_topics: tuple[str, ...] = ()
+    gossipsub_degree: int = 6
+    gossipsub_degree_low: int = 4
+    gossipsub_degree_high: int = 12
+    gossipsub_heartbeat_interval: float = 1.0
+    gossipsub_time_to_live: int = 60
+
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:
             raise ValueError(
@@ -69,6 +78,41 @@ class Config:
                 "no",
                 "off",
             )
+
+        env_pubsub = os.getenv("IPFS_LITE_ENABLE_PUBSUB")
+        if env_pubsub is not None:
+            self.enable_pubsub = env_pubsub.strip().lower() not in (
+                "0",
+                "false",
+                "no",
+                "off",
+            )
+
+        env_topics = os.getenv("IPFS_LITE_PUBSUB_TOPICS")
+        if env_topics:
+            self.pubsub_topics = tuple(
+                t.strip() for t in env_topics.split(",") if t.strip()
+            )
+
+        env_degree = os.getenv("IPFS_LITE_GOSSIPSUB_DEGREE")
+        if env_degree is not None:
+            self.gossipsub_degree = int(env_degree)
+
+        env_degree_low = os.getenv("IPFS_LITE_GOSSIPSUB_DEGREE_LOW")
+        if env_degree_low is not None:
+            self.gossipsub_degree_low = int(env_degree_low)
+
+        env_degree_high = os.getenv("IPFS_LITE_GOSSIPSUB_DEGREE_HIGH")
+        if env_degree_high is not None:
+            self.gossipsub_degree_high = int(env_degree_high)
+
+        env_heartbeat = os.getenv("IPFS_LITE_GOSSIPSUB_HEARTBEAT_INTERVAL")
+        if env_heartbeat is not None:
+            self.gossipsub_heartbeat_interval = float(env_heartbeat)
+
+        env_ttl = os.getenv("IPFS_LITE_GOSSIPSUB_TTL")
+        if env_ttl is not None:
+            self.gossipsub_time_to_live = int(env_ttl)
 
         if self.conn_mgr_low_water < 0 or self.conn_mgr_high_water < 0:
             raise ValueError("Connection watermarks cannot be negative.")

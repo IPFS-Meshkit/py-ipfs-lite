@@ -22,6 +22,21 @@ from py_ipfs_lite.metrics import (
     MetricsBlockStore,
 )
 
+# Pubsub imports (lazy-loaded to avoid circular deps)
+try:
+    from libp2p.pubsub.gossipsub import GossipSub
+    from libp2p.pubsub.pubsub import Pubsub
+    from libp2p.tools.anyio_service import background_trio_service
+    from libp2p.tools.anyio_service.trio_manager import TrioManager
+    _HAS_PUBSUB = True
+except ImportError:
+    GossipSub = None  # type: ignore
+    Pubsub = None  # type: ignore
+    background_trio_service = None  # type: ignore
+    TrioManager = None  # type: ignore
+    _HAS_PUBSUB = False
+    _HAS_PUBSUB = False
+
 
 @dataclass
 class GCResult:
@@ -438,6 +453,12 @@ class Peer:
         self._inflight_pings: set[Any] = set()
         self._ping_service: Any = None
         self._last_good_peer: Any | None = None
+
+        # Pubsub/GossipSub
+        self.pubsub: Any = None
+        self._gossipsub: Any = None
+        self._pubsub_services: list[Any] = []
+        self._pubsub_subscriptions: dict[str, Any] = {}
 
     @classmethod
     async def new(
@@ -861,6 +882,10 @@ class Peer:
             if self.config.stream_monitor_enabled:
                 self._nursery.start_soon(self._stream_leak_monitor_loop)
 
+            # Initialize Pubsub/GossipSub if enabled
+            if self.config.enable_pubsub:
+                await self._init_pubsub()
+
             self._state = PeerState.RUNNING
         except Exception:
             await self.close()
@@ -1089,6 +1114,104 @@ class Peer:
             except Exception as e:
                 logger.debug(f"Stream leak monitor error: {e}")
 
+    async def _init_pubsub(self) -> None:
+        """Initialize GossipSub and Pubsub services."""
+        if not _HAS_PUBSUB:
+            logger.warning("Pubsub requested but libp2p pubsub modules not available")
+            return
+
+        raw_host = getattr(self.host, "_host", self.host)
+        if raw_host is None:
+            logger.warning("Cannot init pubsub: no raw host")
+            return
+
+        from libp2p.custom_types import TProtocol
+
+        # Use meshsub/1.1.0 (GossipSub v1.1) for good compatibility
+        protocol_id = TProtocol("/meshsub/1.1.0")
+
+        self._gossipsub = GossipSub(
+            protocols=[protocol_id],
+            degree=self.config.gossipsub_degree,
+            degree_low=self.config.gossipsub_degree_low,
+            degree_high=self.config.gossipsub_degree_high,
+            heartbeat_interval=self.config.gossipsub_heartbeat_interval,
+            time_to_live=self.config.gossipsub_time_to_live,
+        )
+
+        self.pubsub = Pubsub(raw_host, self._gossipsub)
+
+        # Start pubsub services using TrioManager in our nursery
+        async def _run_pubsub_service(service: Any) -> None:
+            manager = TrioManager(service)
+            await manager.run()
+
+        self._nursery.start_soon(_run_pubsub_service, self.pubsub)
+        self._nursery.start_soon(_run_pubsub_service, self._gossipsub)
+
+        # Wait for services to start
+        await trio.sleep(1)
+
+        logger.info(f"Pubsub ready with GossipSub ({protocol_id})")
+
+        # Subscribe to configured topics
+        for topic in self.config.pubsub_topics:
+            await self.subscribe_pubsub_topic(topic)
+
+        # Auto-subscribe to IPNS topic if we have a peer ID
+        peer_id = raw_host.get_id()
+        if peer_id:
+            ipns_topic = f"/ipns/{peer_id.to_base58()}"
+            await self.subscribe_pubsub_topic(ipns_topic)
+
+    async def subscribe_pubsub_topic(self, topic: str) -> None:
+        """Subscribe to a pubsub topic and start receive loop."""
+        if self.pubsub is None:
+            logger.warning(f"Cannot subscribe to {topic}: pubsub not initialized")
+            return
+
+        if topic in self._pubsub_subscriptions:
+            logger.debug(f"Already subscribed to {topic}")
+            return
+
+        try:
+            subscription = await self.pubsub.subscribe(topic)
+            self._pubsub_subscriptions[topic] = subscription
+
+            # Start receive loop for this topic
+            self._nursery.start_soon(self._pubsub_receive_loop, topic, subscription)
+
+            logger.info(f"Subscribed to pubsub topic: {topic}")
+        except Exception as e:
+            logger.error(f"Failed to subscribe to {topic}: {e}")
+
+    async def _pubsub_receive_loop(self, topic: str, subscription: Any) -> None:
+        """Receive loop for a pubsub topic."""
+        logger.debug(f"Starting pubsub receive loop for {topic}")
+        while self._state == PeerState.RUNNING:
+            try:
+                msg = await subscription.get()
+                logger.debug(
+                    f"Pubsub message on {topic} from {msg.from_id}: {msg.data[:100] if msg.data else 'empty'}"
+                )
+                # TODO: Hook for message handlers
+            except Exception as e:
+                if self._state == PeerState.RUNNING:
+                    logger.debug(f"Pubsub receive error on {topic}: {e}")
+                break
+
+    async def publish_pubsub(self, topic: str, data: bytes) -> None:
+        """Publish a message to a pubsub topic."""
+        if self.pubsub is None:
+            logger.warning(f"Cannot publish to {topic}: pubsub not initialized")
+            return
+
+        try:
+            await self.pubsub.publish(topic, data)
+            logger.debug(f"Published to {topic}: {len(data)} bytes")
+        except Exception as e:
+            logger.error(f"Failed to publish to {topic}: {e}")
+
     async def _ping_peer(self, peer_id: Any, timeout: float = 5.0) -> None:
         """
         Send a single keepalive ping to *peer_id*.
@@ -1150,6 +1273,13 @@ class Peer:
         self._state = PeerState.STOPPING
 
         try:
+            # Close exit_stack FIRST (stops pubsub services gracefully)
+            try:
+                await self._exit_stack.aclose()
+            except Exception as e:
+                logger.debug(f"Error closing exit stack: {e}")
+
+            # THEN cancel nursery (stops keepalive, stream monitor, etc.)
             if hasattr(self, "_nursery") and self._nursery:
                 self._nursery.cancel_scope.cancel()
 
@@ -1160,11 +1290,10 @@ class Peer:
 
                 if self.routing and hasattr(self.routing, "close"):
                     await self.routing.close()
+
+                self._pubsub_subscriptions.clear()
         finally:
-            try:
-                await self._exit_stack.aclose()
-            except Exception as e:
-                logger.debug(f"Deferred nursery exception during close: {e}")
+            self._state = PeerState.STOPPED
             self._state = PeerState.STOPPED
 
     async def bootstrap(self, peers: list[str] | list[Any]) -> None:
