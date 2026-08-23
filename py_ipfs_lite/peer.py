@@ -28,6 +28,7 @@ try:
     from libp2p.pubsub.pubsub import Pubsub
     from libp2p.tools.anyio_service import background_trio_service
     from libp2p.tools.anyio_service.trio_manager import TrioManager
+
     _HAS_PUBSUB = True
 except ImportError:
     GossipSub = None  # type: ignore
@@ -869,6 +870,14 @@ class Peer:
             if self.routing and hasattr(self.routing, "start"):
                 self._nursery.start_soon(self.routing.start)
 
+            # Re-populate the DHT routing table from the persistent peerstore.
+            # The SQLite-backed SyncPersistentPeerStore survives restarts (it
+            # lives under blockstore_path), but the in-memory Kademlia routing
+            # table starts empty — this task re-inserts known peers so
+            # provider lookups work immediately instead of needing minutes
+            # of random-walk discovery after every reboot.
+            self._nursery.start_soon(self._warm_routing_table_from_peerstore)
+
             # Keep connections alive by sending periodic pings (fixes 25-30s idle disconnects)
             self._nursery.start_soon(self._keep_alive_loop)
 
@@ -894,6 +903,78 @@ class Peer:
         except Exception:
             await self.close()
             raise
+
+    async def _warm_routing_table_from_peerstore(self) -> None:
+        """
+        Re-insert peers persisted in the peerstore into the DHT routing table.
+
+        Runs in the background shortly after startup so a restarted node
+        regains a usable routing table immediately.  Entries are added with
+        ``skip_server_mode_check=True`` — no network round-trips; dead peers
+        are pruned naturally by subsequent lookups and refresh cycles.
+        """
+        import os
+        import random
+
+        import trio
+        from libp2p.peer.peerinfo import PeerInfo
+
+        # Give the DHT service a moment to finish starting before we touch
+        # its routing table.
+        await trio.sleep(10)
+
+        try:
+            if not self.routing or not hasattr(self.routing, "_routing"):
+                return
+            raw_dht = self.routing._routing
+            routing_table = getattr(raw_dht, "routing_table", None)
+            if routing_table is None:
+                return
+
+            raw_host = getattr(self.host, "_host", self.host)
+            peerstore = raw_host.get_peerstore()
+            my_id = raw_host.get_id()
+
+            max_peers = int(os.environ.get("IPFS_LITE_RT_WARMUP_PEERS", "256"))
+            all_ids = list(peerstore.peer_ids())
+            candidates = [pid for pid in all_ids if pid != my_id]
+            if len(candidates) > max_peers:
+                candidates = random.sample(candidates, max_peers)
+
+            added = 0
+            skipped_no_addr = 0
+            for i, pid in enumerate(candidates):
+                if i % 50 == 0:
+                    await trio.sleep(0)
+                try:
+                    addrs = peerstore.addrs(pid)
+                except Exception:
+                    continue
+                if not addrs:
+                    skipped_no_addr += 1
+                    continue
+                try:
+                    ok = await routing_table.add_peer(
+                        PeerInfo(pid, list(addrs)),
+                        skip_server_mode_check=True,
+                    )
+                    if ok:
+                        added += 1
+                except Exception:
+                    continue
+
+            logging.getLogger(__name__).info(
+                "Routing table warm-up: inserted %d/%d persisted peers "
+                "(%d without addrs, peerstore total=%d)",
+                added,
+                len(candidates),
+                skipped_no_addr,
+                len(all_ids),
+            )
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "Routing table warm-up failed (non-fatal): %s", e
+            )
 
     async def _keep_alive_loop(self) -> None:
         """
@@ -935,9 +1016,7 @@ class Peer:
                 if hasattr(network, "connections"):
                     for peer_id, conns in network.connections.items():
                         conns_list = conns if isinstance(conns, list) else [conns]
-                        if any(
-                            not getattr(c, "is_closed", False) for c in conns_list
-                        ):
+                        if any(not getattr(c, "is_closed", False) for c in conns_list):
                             connected_peers.add(peer_id)
 
                 if not connected_peers:
@@ -963,9 +1042,7 @@ class Peer:
                             self._last_ping_time[peer_id] = time.monotonic()
                         await trio.sleep(0.1)
                     except Exception as e:
-                        logger.debug(
-                            f"Keep-alive ping error for {peer_id}: {e}"
-                        )
+                        logger.debug(f"Keep-alive ping error for {peer_id}: {e}")
                     finally:
                         self._inflight_pings.discard(peer_id)
 
@@ -1114,6 +1191,7 @@ class Peer:
                 try:
                     import ctypes
                     import gc
+
                     gc.collect()
                     libc = ctypes.CDLL("libc.so.6")
                     libc.malloc_trim(0)
@@ -1287,9 +1365,7 @@ class Peer:
         }
 
         # Update per-topic streaks
-        for topic in set(self._topic_stats) | {
-            t for t, c in counts.items() if c >= 1
-        }:
+        for topic in set(self._topic_stats) | {t for t, c in counts.items() if c >= 1}:
             c = counts.get(topic, 0)
             st = self._topic_stats.setdefault(
                 topic, {"hits": 0, "misses": 0, "max_peers": 0}
