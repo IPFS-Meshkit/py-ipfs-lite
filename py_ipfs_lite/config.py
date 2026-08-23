@@ -52,6 +52,11 @@ class Config:
     gossipsub_degree_high: int = 12
     gossipsub_heartbeat_interval: float = 1.0
     gossipsub_time_to_live: int = 60
+    # Adaptive topic join: auto-subscribe to any topic where at least this
+    # many connected peers have announced a subscription. 0 disables.
+    pubsub_auto_join_min_peers: int = 2
+    # Hard ceiling on extra (auto-joined) topics to bound mesh overhead.
+    pubsub_auto_join_max_topics: int = 25
 
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:

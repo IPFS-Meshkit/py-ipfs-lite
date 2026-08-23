@@ -1168,6 +1168,72 @@ class Peer:
             ipns_topic = f"/ipns/{peer_id.to_base58()}"
             await self.subscribe_pubsub_topic(ipns_topic)
 
+        # Adaptive topic join: watch peer_topics and subscribe to shared topics
+        if self.config.pubsub_auto_join_min_peers > 0:
+            self._nursery.start_soon(self._pubsub_topic_discovery_loop)
+
+    async def _pubsub_topic_discovery_loop(self) -> None:
+        """
+        Periodically scan ``pubsub.peer_topics`` and auto-join shared topics.
+
+        GossipSub SUB announcements reveal which topics our connected peers
+        are subscribed to. Joining a topic that several peers share puts us
+        in their mesh, generating regular meshsub traffic and giving remote
+        connection managers a reason to keep us (retention).
+
+        Bounded by ``pubsub_auto_join_max_topics`` extra subscriptions.
+        """
+        while self._state == PeerState.RUNNING:
+            await trio.sleep(60.0)
+            try:
+                await self._pubsub_discovery_pass()
+            except Exception as e:
+                if self._state == PeerState.RUNNING:
+                    logger.debug(f"Pubsub topic discovery error: {e}")
+
+    async def _pubsub_discovery_pass(self) -> int:
+        """One scan of peer_topics; returns number of topics joined."""
+        if self.pubsub is None or self._state != PeerState.RUNNING:
+            return 0
+
+        min_peers = max(1, self.config.pubsub_auto_join_min_peers)
+        max_extra = max(0, self.config.pubsub_auto_join_max_topics)
+        base_count = len(self.config.pubsub_topics) + 1  # config topics + own IPNS topic
+
+        # Topics with enough peers, largest first
+        candidates = [
+            (str(topic), len(pids))
+            for topic, pids in getattr(self.pubsub, "peer_topics", {}).items()
+            if len(pids) >= min_peers
+        ]
+        candidates.sort(key=lambda kv: kv[1], reverse=True)
+
+        joined = 0
+        for topic, count in candidates:
+            if topic in self._pubsub_subscriptions:
+                continue
+            if len(self._pubsub_subscriptions) >= base_count + max_extra:
+                logger.info(
+                    "Pubsub auto-join hit cap (%d extra topics); "
+                    "skipping %s (%d peers)",
+                    max_extra,
+                    topic,
+                    count,
+                )
+                break
+            logger.info(
+                "Pubsub auto-joining shared topic %s (%d peers)", topic, count
+            )
+            await self.subscribe_pubsub_topic(topic)
+            joined += 1
+        if joined:
+            logger.info(
+                "Pubsub discovery: joined %d shared topic(s), %d total subscriptions",
+                joined,
+                len(self._pubsub_subscriptions),
+            )
+        return joined
+
     async def subscribe_pubsub_topic(self, topic: str) -> None:
         """Subscribe to a pubsub topic and start receive loop."""
         if self.pubsub is None:
