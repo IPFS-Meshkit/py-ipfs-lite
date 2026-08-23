@@ -617,6 +617,7 @@ async def pubsub_ls(request: Request) -> Any:
     return JSONResponse(
         content={
             "my_topics": my_topics,
+            "auto_joined": sorted(getattr(peer, "_auto_joined_topics", ()) or ()),
             "peer_topics": dict(
                 sorted(peer_topics.items(), key=lambda kv: kv[1], reverse=True)
             ),

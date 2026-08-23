@@ -459,6 +459,10 @@ class Peer:
         self._gossipsub: Any = None
         self._pubsub_services: list[Any] = []
         self._pubsub_subscriptions: dict[str, Any] = {}
+        # Adaptive topic scorer state
+        self._topic_stats: dict[str, dict[str, int]] = {}
+        self._auto_joined_topics: set[str] = set()
+        self._own_ipns_topic: str = ""
 
     @classmethod
     async def new(
@@ -1166,11 +1170,74 @@ class Peer:
         peer_id = raw_host.get_id()
         if peer_id:
             ipns_topic = f"/ipns/{peer_id.to_base58()}"
+            self._own_ipns_topic = ipns_topic
             await self.subscribe_pubsub_topic(ipns_topic)
+
+        # Rejoin auto-discovered topics persisted from a previous run so we
+        # are back in known-good meshes immediately instead of waiting for
+        # the discovery loop's confirmation window.
+        if self.config.pubsub_persist_topics:
+            for topic in self._load_auto_pubsub_topics():
+                if topic not in self._pubsub_subscriptions:
+                    logger.info(f"Rejoining persisted pubsub topic: {topic}")
+                    await self.subscribe_pubsub_topic(topic)
+                    self._auto_joined_topics.add(topic)
 
         # Adaptive topic join: watch peer_topics and subscribe to shared topics
         if self.config.pubsub_auto_join_min_peers > 0:
             self._nursery.start_soon(self._pubsub_topic_discovery_loop)
+
+    def _protected_pubsub_topics(self) -> set[str]:
+        """Topics never subject to auto-leave (configured + our own IPNS)."""
+        return set(self.config.pubsub_topics) | {
+            getattr(self, "_own_ipns_topic", "")
+        } - {""}
+
+    def _auto_pubsub_path(self) -> str | None:
+        """File path for persisting auto-joined topics, or None."""
+        import os
+
+        if (
+            not self.config.pubsub_persist_topics
+            or self.config.blockstore_type == "memory"
+            or not self.config.blockstore_path
+        ):
+            return None
+        base = os.path.dirname(self.config.blockstore_path) or "."
+        return os.path.join(base, "auto_pubsub_topics.json")
+
+    def _save_auto_pubsub_topics(self) -> None:
+        import json
+        import os
+        import tempfile
+
+        path = self._auto_pubsub_path()
+        if path is None:
+            return
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            data = sorted(self._auto_joined_topics)
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f)
+            os.replace(tmp, path)
+        except Exception as e:
+            logger.debug(f"Failed saving auto pubsub topics: {e}")
+
+    def _load_auto_pubsub_topics(self) -> list[str]:
+        import json
+        import os
+
+        path = self._auto_pubsub_path()
+        if path is None or not os.path.exists(path):
+            return []
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            return [str(t) for t in data if isinstance(t, str)]
+        except Exception as e:
+            logger.debug(f"Failed loading auto pubsub topics: {e}")
+            return []
 
     async def _pubsub_topic_discovery_loop(self) -> None:
         """
@@ -1191,48 +1258,110 @@ class Peer:
                 if self._state == PeerState.RUNNING:
                     logger.debug(f"Pubsub topic discovery error: {e}")
 
-    async def _pubsub_discovery_pass(self) -> int:
-        """One scan of peer_topics; returns number of topics joined."""
+    async def _pubsub_discovery_pass(self) -> tuple[int, int]:
+        """
+        One scorer pass over ``peer_topics``; returns (joined, left).
+
+        Join rule: topic announced by >= min_peers peers for
+        ``join_confirmations`` consecutive scans (~stable mesh, not a blip).
+        Candidates ranked by peak announcing-peer count so bigger meshes win.
+
+        Leave rule: auto-joined topic whose announcers fell below the
+        threshold for ``leave_misses`` consecutive scans is unsubscribed to
+        free capacity. Configured topics and our own IPNS topic are protected.
+        """
         if self.pubsub is None or self._state != PeerState.RUNNING:
-            return 0
+            return 0, 0
 
         min_peers = max(1, self.config.pubsub_auto_join_min_peers)
+        join_conf = max(1, self.config.pubsub_join_confirmations)
+        leave_after = max(1, self.config.pubsub_leave_misses)
         max_extra = max(0, self.config.pubsub_auto_join_max_topics)
-        base_count = len(self.config.pubsub_topics) + 1  # config topics + own IPNS topic
+        base_count = len(self.config.pubsub_topics) + (
+            1 if getattr(self, "_own_ipns_topic", None) else 0
+        )
 
-        # Topics with enough peers, largest first
-        candidates = [
-            (str(topic), len(pids))
+        counts: dict[str, int] = {
+            str(topic): len(pids)
             for topic, pids in getattr(self.pubsub, "peer_topics", {}).items()
-            if len(pids) >= min_peers
-        ]
-        candidates.sort(key=lambda kv: kv[1], reverse=True)
+        }
+
+        # Update per-topic streaks
+        for topic in set(self._topic_stats) | {
+            t for t, c in counts.items() if c >= 1
+        }:
+            c = counts.get(topic, 0)
+            st = self._topic_stats.setdefault(
+                topic, {"hits": 0, "misses": 0, "max_peers": 0}
+            )
+            if c >= min_peers:
+                st["hits"] += 1
+                st["misses"] = 0
+                st["max_peers"] = max(st["max_peers"], c)
+            else:
+                st["misses"] += 1
+                if st["misses"] >= leave_after:
+                    # Streak dead — reset so a later revival starts fresh.
+                    st["hits"] = 0
+                    st["max_peers"] = 0
+
+        left = 0
+        # Leave pass first: free capacity before joining anything new
+        for topic in list(self._pubsub_subscriptions):
+            if topic in self._protected_pubsub_topics():
+                continue
+            st = self._topic_stats.get(topic)
+            if st is not None and st["misses"] >= leave_after:
+                sub = self._pubsub_subscriptions.pop(topic, None)
+                try:
+                    if sub is not None and hasattr(sub, "unsubscribe"):
+                        await sub.unsubscribe()
+                except Exception as e:
+                    logger.debug(f"Error unsubscribing from {topic}: {e}")
+                self._auto_joined_topics.discard(topic)
+                self._topic_stats.pop(topic, None)
+                left += 1
+                logger.info(f"Pubsub auto-left stale topic {topic}")
 
         joined = 0
-        for topic, count in candidates:
-            if topic in self._pubsub_subscriptions:
-                continue
+        candidates = sorted(
+            (
+                (t, s)
+                for t, s in self._topic_stats.items()
+                if s["hits"] >= join_conf and t not in self._pubsub_subscriptions
+            ),
+            key=lambda kv: kv[1]["max_peers"],
+            reverse=True,
+        )
+        for topic, st in candidates:
             if len(self._pubsub_subscriptions) >= base_count + max_extra:
                 logger.info(
-                    "Pubsub auto-join hit cap (%d extra topics); "
-                    "skipping %s (%d peers)",
+                    "Pubsub auto-join hit cap (%d extra topics); skipping %s "
+                    "(peak %d peers)",
                     max_extra,
                     topic,
-                    count,
+                    st["max_peers"],
                 )
                 break
             logger.info(
-                "Pubsub auto-joining shared topic %s (%d peers)", topic, count
+                "Pubsub auto-joining stable topic %s (peak %d peers over %d scans)",
+                topic,
+                st["max_peers"],
+                st["hits"],
             )
             await self.subscribe_pubsub_topic(topic)
+            self._auto_joined_topics.add(topic)
             joined += 1
-        if joined:
+
+        if joined or left:
+            self._save_auto_pubsub_topics()
             logger.info(
-                "Pubsub discovery: joined %d shared topic(s), %d total subscriptions",
+                "Pubsub discovery: joined %d, left %d (%d subscriptions total)",
                 joined,
+                left,
                 len(self._pubsub_subscriptions),
             )
-        return joined
+        return joined, left
 
     async def subscribe_pubsub_topic(self, topic: str) -> None:
         """Subscribe to a pubsub topic and start receive loop."""

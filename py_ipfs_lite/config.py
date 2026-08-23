@@ -57,6 +57,14 @@ class Config:
     pubsub_auto_join_min_peers: int = 2
     # Hard ceiling on extra (auto-joined) topics to bound mesh overhead.
     pubsub_auto_join_max_topics: int = 25
+    # Topic must be seen at this many consecutive discovery scans before we
+    # join — filters flash-in-the-pan announcements from stable meshes.
+    pubsub_join_confirmations: int = 2
+    # Auto-joined topic is dropped after this many consecutive scans where
+    # announcing peers fell below the threshold (hysteresis anti-flap).
+    pubsub_leave_misses: int = 4
+    # Persist auto-joined topics to disk and rejoin them instantly on boot.
+    pubsub_persist_topics: bool = True
 
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:
