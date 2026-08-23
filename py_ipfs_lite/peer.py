@@ -1262,15 +1262,19 @@ class Peer:
 
         # Rejoin auto-discovered topics persisted from a previous run so we
         # are back in known-good meshes immediately instead of waiting for
-        # the discovery loop's confirmation window.
-        if self.config.pubsub_persist_topics:
+        # the discovery loop's confirmation window.  Skipped entirely when
+        # auto-join is disabled (min_peers == 0).
+        if (
+            self.config.pubsub_persist_topics
+            and self.config.pubsub_auto_join_min_peers > 0
+        ):
             for topic in self._load_auto_pubsub_topics():
                 if topic not in self._pubsub_subscriptions:
                     logger.info(f"Rejoining persisted pubsub topic: {topic}")
                     await self.subscribe_pubsub_topic(topic)
                     self._auto_joined_topics.add(topic)
 
-        # Adaptive topic join: watch peer_topics and subscribe to shared topics
+        # Adaptive topic join: watch peer_topics and subscribe to shared topics.
         if self.config.pubsub_auto_join_min_peers > 0:
             self._nursery.start_soon(self._pubsub_topic_discovery_loop)
 

@@ -114,6 +114,11 @@ class Config:
                 t.strip() for t in env_topics.split(",") if t.strip()
             )
 
+        # 0 disables adaptive topic auto-join entirely.
+        env_auto_join = os.getenv("IPFS_LITE_PUBSUB_AUTO_JOIN_MIN_PEERS")
+        if env_auto_join is not None:
+            self.pubsub_auto_join_min_peers = int(env_auto_join)
+
         env_degree = os.getenv("IPFS_LITE_GOSSIPSUB_DEGREE")
         if env_degree is not None:
             self.gossipsub_degree = int(env_degree)
