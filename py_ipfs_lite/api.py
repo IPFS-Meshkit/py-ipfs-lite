@@ -586,6 +586,45 @@ async def debug_routing_table(request: Request) -> Any:
     return JSONResponse(content={"count": res.count, "peers": res.peers})
 
 
+@app.post("/api/v0/pubsub/ls")
+@app.get("/api/v0/pubsub/ls")
+async def pubsub_ls(request: Request) -> Any:
+    """List our pubsub subscriptions and topics peers have announced.
+
+    ``peer_topics`` is live topic discovery: it shows every topic that at
+    least one currently-connected peer has subscribed to (via gossipsub
+    SUB announcements), with the number of such peers. Useful for deciding
+    which topics are worth joining.
+    """
+    peer: Peer = request.app.state.peer
+    ps = getattr(peer, "pubsub", None)
+    if ps is None:
+        return JSONResponse(
+            content={"error": "pubsub not enabled"}, status_code=400
+        )
+
+    my_topics = sorted(str(t) for t in getattr(ps, "topic_ids", ()) or ())
+    peer_topics: dict[str, int] = {}
+    for topic, pids in getattr(ps, "peer_topics", {}).items():
+        peer_topics[str(topic)] = len(pids)
+
+    mesh: dict[str, int] = {}
+    gs = getattr(peer, "_gossipsub", None)
+    if gs is not None:
+        for topic, members in getattr(gs, "mesh", {}).items():
+            mesh[str(topic)] = len(members)
+
+    return JSONResponse(
+        content={
+            "my_topics": my_topics,
+            "peer_topics": dict(
+                sorted(peer_topics.items(), key=lambda kv: kv[1], reverse=True)
+            ),
+            "mesh": mesh,
+        }
+    )
+
+
 @app.get("/api/v0/debug/memory")
 async def debug_memory(request: Request) -> Any:
     """Detailed live memory and object introspection endpoint."""
