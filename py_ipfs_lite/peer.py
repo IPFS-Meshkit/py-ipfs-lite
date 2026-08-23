@@ -1502,7 +1502,7 @@ class Peer:
                     elif isinstance(from_id, bytes):
                         from libp2p.peer.id import ID as _ID
 
-                        from_peer = _ID.from_bytes(from_id).to_base58()
+                        from_peer = _ID(from_id).to_base58()
                     else:
                         from_peer = str(from_id)
                 except Exception:
