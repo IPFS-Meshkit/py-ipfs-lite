@@ -1,3 +1,5 @@
+import base64
+import collections
 import contextlib
 import logging
 import time
@@ -460,6 +462,9 @@ class Peer:
         self._gossipsub: Any = None
         self._pubsub_services: list[Any] = []
         self._pubsub_subscriptions: dict[str, Any] = {}
+        # Ring buffer of recent messages per topic, filled by the receive
+        # loops and drained by the /api/v0/pubsub/sub endpoint.
+        self._pubsub_messages: dict[str, "collections.deque[Any]"] = {}
         # Adaptive topic scorer state
         self._topic_stats: dict[str, dict[str, int]] = {}
         self._auto_joined_topics: set[str] = set()
@@ -1460,16 +1465,57 @@ class Peer:
         except Exception as e:
             logger.error(f"Failed to subscribe to {topic}: {e}")
 
+    async def unsubscribe_pubsub_topic(self, topic: str) -> bool:
+        """Unsubscribe from a pubsub topic. Returns True if we were subscribed."""
+        sub = self._pubsub_subscriptions.pop(topic, None)
+        self._pubsub_messages.pop(topic, None)
+        if sub is None:
+            return False
+        try:
+            if hasattr(sub, "unsubscribe"):
+                await sub.unsubscribe()
+        except Exception as e:
+            logger.debug(f"Error unsubscribing from {topic}: {e}")
+        logger.info(f"Unsubscribed from pubsub topic: {topic}")
+        return True
+
+    def get_pubsub_messages(self, topic: str) -> list[dict[str, Any]]:
+        """Return (and clear) the buffered messages received on a topic."""
+        buffer = self._pubsub_messages.get(topic)
+        if not buffer:
+            return []
+        messages = list(buffer)
+        buffer.clear()
+        return messages
+
     async def _pubsub_receive_loop(self, topic: str, subscription: Any) -> None:
-        """Receive loop for a pubsub topic."""
+        """Receive loop for the given pubsub topic."""
         logger.debug(f"Starting pubsub receive loop for {topic}")
+        buffer = self._pubsub_messages.setdefault(topic, collections.deque(maxlen=100))
         while self._state == PeerState.RUNNING:
             try:
                 msg = await subscription.get()
-                logger.debug(
-                    f"Pubsub message on {topic} from {msg.from_id}: {msg.data[:100] if msg.data else 'empty'}"
+                try:
+                    from_peer = (
+                        msg.from_id.to_base58()
+                        if hasattr(msg.from_id, "to_base58")
+                        else str(msg.from_id)
+                    )
+                except Exception:
+                    from_peer = "unknown"
+                buffer.append(
+                    {
+                        "topic": topic,
+                        "from": from_peer,
+                        "data": base64.b64encode(msg.data or b"").decode(),
+                        "size": len(msg.data or b""),
+                        "received_at": time.time(),
+                    }
                 )
-                # TODO: Hook for message handlers
+                logger.debug(
+                    f"Pubsub message on {topic} from {msg.from_id}: "
+                    f"{msg.data[:100] if msg.data else 'empty'}"
+                )
             except Exception as e:
                 if self._state == PeerState.RUNNING:
                     logger.debug(f"Pubsub receive error on {topic}: {e}")

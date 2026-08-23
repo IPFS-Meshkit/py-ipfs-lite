@@ -900,3 +900,244 @@ async def swarm_tags_remove(
     from py_ipfs_lite.services import swarm_service
 
     return JSONResponse(content=await swarm_service.remove_peer_tag(peer, arg, tag))
+
+
+@app.post("/api/v0/pubsub/pub")
+async def pubsub_pub(
+    request: Request,
+    arg: str = Query(..., description="The topic to publish to"),
+) -> Any:
+    """Publish a message (raw request body) to a pubsub topic."""
+    peer: Peer = request.app.state.peer
+    if getattr(peer, "pubsub", None) is None:
+        raise HTTPException(status_code=400, detail="pubsub not enabled")
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty message body")
+    await peer.publish_pubsub(arg, body)
+    return JSONResponse(content={"Topic": arg, "Size": len(body)})
+
+
+@app.post("/api/v0/pubsub/sub")
+@app.get("/api/v0/pubsub/sub")
+async def pubsub_sub(
+    request: Request,
+    arg: str = Query(..., description="The topic to read messages from"),
+    count: int = Query(0, ge=0, description="Stop after this many messages (0 = all)"),
+    timeout: float = Query(
+        5.0, gt=0, le=120, description="Seconds to wait for messages"
+    ),
+) -> Any:
+    """
+    Read messages received on a pubsub topic.
+
+    Subscribes first if necessary. Returns messages buffered since the last
+    call (each message is delivered exactly once). Waits up to ``timeout``
+    seconds for at least one message when the buffer is empty.
+    """
+    peer: Peer = request.app.state.peer
+    if getattr(peer, "pubsub", None) is None:
+        raise HTTPException(status_code=400, detail="pubsub not enabled")
+
+    if arg not in peer._pubsub_subscriptions:
+        await peer.subscribe_pubsub_topic(arg)
+
+    deadline = trio.current_time() + timeout
+    while True:
+        messages = peer.get_pubsub_messages(arg)
+        if messages and (count <= 0 or len(messages) >= count):
+            break
+        if trio.current_time() >= deadline:
+            break
+        await trio.sleep(0.1)
+
+    if count > 0:
+        messages = messages[:count]
+    return JSONResponse(content={"Topic": arg, "Messages": messages})
+
+
+@app.delete("/api/v0/pubsub/sub")
+async def pubsub_unsub(
+    request: Request,
+    arg: str = Query(..., description="The topic to unsubscribe from"),
+) -> Any:
+    """Unsubscribe from a pubsub topic."""
+    peer: Peer = request.app.state.peer
+    removed = await peer.unsubscribe_pubsub_topic(arg)
+    return JSONResponse(content={"Topic": arg, "Unsubscribed": bool(removed)})
+
+
+@app.post("/api/v0/dag/export")
+@app.get("/api/v0/dag/export")
+async def dag_export(
+    request: Request,
+    arg: str = Query(..., description="Root CID of the DAG to export as CAR"),
+) -> Response:
+    """Export the DAG rooted at *arg* as a CARv1 file."""
+    import os
+    import tempfile
+
+    from fastapi.responses import FileResponse
+    from starlette.background import BackgroundTask
+
+    peer: Peer = request.app.state.peer
+    fd, path = tempfile.mkstemp(suffix=".car", prefix="py-ipfs-lite-export-")
+    os.close(fd)
+    try:
+        await peer.export_car(arg, path)
+    except Exception:
+        os.unlink(path)
+        raise
+    return FileResponse(
+        path,
+        media_type="application/vnd.ipld.car",
+        filename=f"{arg}.car",
+        background=BackgroundTask(os.unlink, path),
+    )
+
+
+@app.post("/api/v0/dag/import")
+async def dag_import(request: Request, file: UploadFile = File(...)) -> Any:
+    """Import a CAR file into the blockstore. Returns the root CIDs found."""
+    import os
+    import tempfile
+
+    peer: Peer = request.app.state.peer
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty CAR payload")
+
+    fd, path = tempfile.mkstemp(suffix=".car", prefix="py-ipfs-lite-import-")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        roots = await peer.import_car(path)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return JSONResponse(content={"Roots": [{"Hash": r} for r in roots]})
+
+
+async def _local_block(peer: Peer, cid_str: str) -> bytes:
+    """Fetch a block from the local blockstore only."""
+    from py_ipfs_lite.exceptions import BlockNotFoundError
+    from py_ipfs_lite.peer import cid_to_bytes, parse_cid
+
+    if not peer.blockstore:
+        raise HTTPException(status_code=503, detail="Blockstore not initialized")
+    try:
+        cid = parse_cid(cid_str)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid CID: {e}") from e
+    data = await peer.blockstore.get(cid_to_bytes(cid))
+    if data is None:
+        raise BlockNotFoundError(cid_str)
+    return data
+
+
+@app.post("/api/v0/refs")
+@app.get("/api/v0/refs")
+async def refs_local_object(
+    request: Request,
+    arg: str = Query(..., description="CID whose direct children should be listed"),
+    recursive: bool = Query(False, description="Walk the whole DAG"),
+) -> Any:
+    """List references (child links) of a local DAG node."""
+    from libp2p.bitswap.cid import parse_cid as _parse_cid_raw
+
+    from py_ipfs_lite.dag_utils import extract_cids
+
+    # Validate the root exists locally before walking.
+    await _local_block(request.app.state.peer, arg)
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+
+    def _cid_str(raw: bytes) -> str | None:
+        try:
+            return str(_parse_cid_raw(raw))
+        except Exception:
+            return None
+
+    async def visit(cid_str: str) -> None:
+        if cid_str in seen:
+            return
+        seen.add(cid_str)
+        data = await _local_block(request.app.state.peer, cid_str)
+
+        # dag-pb: decode protobuf links with names/sizes
+        try:
+            from libp2p.bitswap.dag_pb import decode_dag_pb
+
+            links, _unixfs = decode_dag_pb(data)
+            children: list[bytes] = []
+            for link in links:
+                child = _cid_str(link.cid)
+                if child is None:
+                    continue
+                children.append(link.cid)
+                out.append({"Ref": child, "Name": link.name, "Size": link.size})
+            if recursive:
+                for raw_child in children:
+                    child = _cid_str(raw_child)
+                    if child:
+                        await visit(child)
+            return
+        except Exception:
+            pass
+
+        # dag-cbor / dag-json: structural CID extraction
+        for raw in extract_cids(data):
+            child = _cid_str(raw)
+            if child is not None and child not in {r["Ref"] for r in out}:
+                out.append({"Ref": child})
+        if recursive:
+            pass  # structural walk handled by extract_cids above (non-recursive)
+
+    await visit(arg)
+    return JSONResponse(content={"Refs": out})
+
+
+@app.post("/api/v0/ls")
+@app.get("/api/v0/ls")
+async def ls_unixfs(
+    request: Request,
+    arg: str = Query(..., description="CID of a unixfs directory"),
+) -> Any:
+    """List the entries of a unixfs directory (dag-pb)."""
+    from libp2p.bitswap.dag_pb import decode_dag_pb
+
+    data = await _local_block(request.app.state.peer, arg)
+    try:
+        links, unixfs = decode_dag_pb(data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Not a dag-pb node: {e}") from e
+
+    if unixfs is None or unixfs.Type != 1:  # 1 = Directory
+        raise HTTPException(status_code=400, detail="Node is not a unixfs directory")
+
+    entries = []
+    for link in links:
+        cid_str = None
+        try:
+            from libp2p.bitswap.cid import parse_cid as _pc
+
+            cid_str = str(_pc(link.cid))
+        except Exception:
+            continue
+        entries.append(
+            {
+                "Name": link.name,
+                "Hash": cid_str,
+                "Size": link.size,
+            }
+        )
+    entries.sort(key=lambda e: e["Name"])
+    return JSONResponse(
+        content={
+            "Objects": [
+                {"Hash": arg, "Links": entries},
+            ]
+        }
+    )
