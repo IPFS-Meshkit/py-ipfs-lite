@@ -1609,11 +1609,24 @@ class Peer:
         cid_str = format_cid_for_display(raw_cid)
         routing = self.routing
         if routing is not None:
+            # The DHT provide walk needs up to ~90s on a cold/loaded node:
+            # it first finds the k-closest peers via iterative lookups (~20s),
+            # then sends ADD_PROVIDER RPCs to each with per-peer timeouts.
+            # Using default_timeout (30s) races against this and causes a
+            # silent TooSlowError (which prints as an empty exception message).
+            # Match the explicit budget used by the /api/v0/dht/provide endpoint.
+            _provide_timeout = 90.0
 
             async def _bg_provide() -> None:
                 try:
-                    with trio.fail_after(t_val):
+                    with trio.fail_after(_provide_timeout):
                         await routing.provide(cid_str)
+                except trio.TooSlowError:
+                    logger.warning(
+                        f"Background DHT provide for {cid_str} timed out after "
+                        f"{_provide_timeout}s — local provider record is still stored, "
+                        f"but remote peers may not know about it yet."
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to provide {cid_str} to DHT: {e}")
 
