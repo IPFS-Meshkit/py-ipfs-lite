@@ -15,6 +15,10 @@ class Config:
     reprovider_strategy: str = "all"
     conn_mgr_high_water: int = 100
     conn_mgr_low_water: int = 50
+    # Explicit inbound admission slot count. When None it defaults to
+    # max_connections - min_connections (computed from the watermarks).
+    # Set via IPFS_LITE_CONN_MGR_INBOUND_SLOTS.
+    conn_mgr_inbound_slots: int | None = None
     blockstore_type: BlockStoreType | str = "filesystem"
     blockstore_path: str | None = ".py_ipfs_lite/blocks"
     use_ipni: bool = False
@@ -82,6 +86,9 @@ class Config:
         env_high = os.getenv("IPFS_LITE_CONN_MGR_HIGH_WATER")
         if env_high is not None:
             self.conn_mgr_high_water = int(env_high)
+        env_inbound = os.getenv("IPFS_LITE_CONN_MGR_INBOUND_SLOTS")
+        if env_inbound is not None:
+            self.conn_mgr_inbound_slots = int(env_inbound)
 
         env_metrics = os.getenv("IPFS_LITE_ENABLE_LIBP2P_METRICS")
         if env_metrics is not None:

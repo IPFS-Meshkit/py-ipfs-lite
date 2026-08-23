@@ -836,10 +836,14 @@ class Peer:
                 # min=10 → 290 inbound slots). Update it to the real limit so the
                 # atomic acquire_nowait() gate actually fires at the right threshold.
                 if hasattr(raw_swarm, "_inbound_limiter"):
-                    max_inbound = max(
-                        1,
-                        raw_swarm.connection_config.max_connections
-                        - raw_swarm.connection_config.min_connections,
+                    max_inbound = (
+                        self.config.conn_mgr_inbound_slots
+                        if self.config.conn_mgr_inbound_slots is not None
+                        else max(
+                            1,
+                            raw_swarm.connection_config.max_connections
+                            - raw_swarm.connection_config.min_connections,
+                        )
                     )
                     raw_swarm._inbound_limiter = __import__("trio").CapacityLimiter(
                         max_inbound
