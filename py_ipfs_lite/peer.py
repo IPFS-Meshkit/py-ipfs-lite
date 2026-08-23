@@ -947,19 +947,23 @@ class Peer:
                     and now - self._last_ping_time.get(p, 0) >= 15.0
                 ]
 
+                # Mark inflight BEFORE starting tasks. Otherwise tasks queued on
+                # the semaphore aren't marked yet when the next sweep runs, so
+                # every sweep re-enqueues them -> unbounded task accumulation.
+                self._inflight_pings.update(peers_to_ping)
+
                 async def _ping_with_semaphore(peer_id):
-                    async with keepalive_semaphore:
-                        self._inflight_pings.add(peer_id)
-                        try:
+                    try:
+                        async with keepalive_semaphore:
                             await self._ping_peer(peer_id)
                             self._last_ping_time[peer_id] = time.monotonic()
-                        except Exception as e:
-                            logger.debug(
-                                f"Keep-alive ping error for {peer_id}: {e}"
-                            )
-                        finally:
-                            self._inflight_pings.discard(peer_id)
                         await trio.sleep(0.1)
+                    except Exception as e:
+                        logger.debug(
+                            f"Keep-alive ping error for {peer_id}: {e}"
+                        )
+                    finally:
+                        self._inflight_pings.discard(peer_id)
 
                 # Fire-and-forget: use the Peer's main nursery so slow pings
                 # don't delay the next sweep cycle.
@@ -1212,7 +1216,7 @@ class Peer:
         except Exception as e:
             logger.error(f"Failed to publish to {topic}: {e}")
 
-    async def _ping_peer(self, peer_id: Any, timeout: float = 5.0) -> None:
+    async def _ping_peer(self, peer_id: Any, timeout: float = 3.0) -> None:
         """
         Send a single keepalive ping to *peer_id*.
 
