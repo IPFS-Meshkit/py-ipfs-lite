@@ -1496,11 +1496,15 @@ class Peer:
             try:
                 msg = await subscription.get()
                 try:
-                    from_peer = (
-                        msg.from_id.to_base58()
-                        if hasattr(msg.from_id, "to_base58")
-                        else str(msg.from_id)
-                    )
+                    from_id = getattr(msg, "from_id", None)
+                    if from_id is not None and hasattr(from_id, "to_base58"):
+                        from_peer = from_id.to_base58()
+                    elif isinstance(from_id, bytes):
+                        from libp2p.peer.id import ID as _ID
+
+                        from_peer = _ID.from_bytes(from_id).to_base58()
+                    else:
+                        from_peer = str(from_id)
                 except Exception:
                     from_peer = "unknown"
                 buffer.append(
