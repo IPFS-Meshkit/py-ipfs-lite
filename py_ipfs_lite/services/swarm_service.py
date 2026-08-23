@@ -77,18 +77,14 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
         else:
             age_tier = "under_2m"
 
-        stream_stats = (
-            tracker.peer_stream_stats.get(pid_str) if tracker else None
-        )
+        stream_stats = tracker.peer_stream_stats.get(pid_str) if tracker else None
         streams_outbound = (
             getattr(stream_stats, "current_open_outbound", 0) if stream_stats else 0
         )
         streams_inbound = (
             getattr(stream_stats, "current_open_inbound", 0) if stream_stats else 0
         )
-        streams_total = (
-            getattr(stream_stats, "current_open", 0) if stream_stats else 0
-        )
+        streams_total = getattr(stream_stats, "current_open", 0) if stream_stats else 0
 
         result.append(
             {
@@ -191,3 +187,152 @@ async def disconnect_peer(peer: Peer, peer_id_str: str) -> None:
             ) from e
 
     await peer.host.disconnect(peer_id)
+
+
+def _resolve_peer_id(peer: Peer, peer_id_str: str) -> Any:
+    """Resolve a bare peer-ID string or multiaddr into a libp2p ID."""
+    from libp2p.peer.id import ID
+    from libp2p.peer.peerinfo import info_from_p2p_addr
+    from multiaddr import Multiaddr
+
+    if peer_id_str.startswith("/"):
+        try:
+            return info_from_p2p_addr(Multiaddr(peer_id_str)).peer_id
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid peer address: {peer_id_str}"
+            ) from e
+    try:
+        return ID.from_base58(peer_id_str)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid peer ID: {peer_id_str}"
+        ) from e
+
+
+def _tag_store_for(peer: Peer) -> Any:
+    """Return the swarm's TagStore (connection-manager protection registry)."""
+    import typing
+
+    raw_host = typing.cast(typing.Any, getattr(peer.host, "_host", peer.host))
+    network = raw_host.get_network()
+    tag_store = getattr(network, "tag_store", None)
+    if tag_store is None:
+        raise HTTPException(
+            status_code=503, detail="Tag store not available on this swarm"
+        )
+    return tag_store
+
+
+async def protect_peer(peer: Peer, peer_id_str: str, tag: str) -> dict[str, Any]:
+    """Mark a peer as protected so the connection pruner never evicts it."""
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+
+    if not peer.host:
+        raise PeerNotStartedError("Peer is not initialized")
+
+    peer_id = _resolve_peer_id(peer, peer_id_str)
+    tag_store = _tag_store_for(peer)
+    tag_store.protect(peer_id, tag)
+    return {"Peers": [str(peer_id)], "Tag": tag}
+
+
+async def unprotect_peer(peer: Peer, peer_id_str: str, tag: str) -> dict[str, Any]:
+    """Remove protection from a previously protected peer."""
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+
+    if not peer.host:
+        raise PeerNotStartedError("Peer is not initialized")
+
+    peer_id = _resolve_peer_id(peer, peer_id_str)
+    tag_store = _tag_store_for(peer)
+    removed = tag_store.unprotect(peer_id, tag)
+    return {"Peers": [str(peer_id)], "Tag": tag, "Removed": bool(removed)}
+
+
+async def list_protected_peers(peer: Peer) -> list[dict[str, Any]]:
+    """List all protected peers with their protection tags and tag values."""
+    if peer.host is None:
+        return []
+    tag_store = _tag_store_for(peer)
+    # _protected maps ID -> set of protection tags (private but stable; this
+    # module is the sanctioned place to reach into libp2p internals).
+    protected_map = getattr(tag_store, "_protected", {})
+    result = []
+    for pid in tag_store.get_protected_peers():
+        info = tag_store.get_tag_info(pid)
+        result.append(
+            {
+                "peer": str(pid),
+                "protections": sorted(protected_map.get(pid, set())),
+                "tags": dict(info.tags) if info else {},
+                "total_value": info.value if info else 0,
+            }
+        )
+    return result
+
+
+async def list_peer_tags(peer: Peer) -> dict[str, Any]:
+    """List every tagged peer with its full tag map, values and protections."""
+    if peer.host is None:
+        return []
+    tag_store = _tag_store_for(peer)
+    protected_map = getattr(tag_store, "_protected", {})
+    result = []
+    for pid in tag_store.get_all_peers():
+        info = tag_store.get_tag_info(pid)
+        if info is None:
+            continue
+        result.append(
+            {
+                "peer": str(pid),
+                "tags": dict(info.tags),
+                "total_value": info.value,
+                "protected": sorted(protected_map.get(pid, set())),
+            }
+        )
+    # Highest-value peers first (matches conn-manager scoring semantics).
+    result.sort(key=lambda p: p["total_value"], reverse=True)
+    return {"count": len(result), "peers": result}
+
+
+async def set_peer_tag(
+    peer: Peer, peer_id_str: str, tag: str, value: int
+) -> dict[str, Any]:
+    """Assign an arbitrary tag with an integer weight to a peer."""
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+
+    if not peer.host:
+        raise PeerNotStartedError("Peer is not initialized")
+    if not tag or len(tag) > 256:
+        raise HTTPException(status_code=400, detail="Invalid tag name")
+
+    peer_id = _resolve_peer_id(peer, peer_id_str)
+    tag_store = _tag_store_for(peer)
+    tag_store.tag_peer(peer_id, tag, value)
+    return {
+        "Peer": str(peer_id),
+        "Tag": tag,
+        "Value": value,
+    }
+
+
+async def remove_peer_tag(peer: Peer, peer_id_str: str, tag: str) -> dict[str, Any]:
+    """Remove a previously assigned tag from a peer."""
+    from py_ipfs_lite.exceptions import PeerNotStartedError
+
+    if not peer.host:
+        raise PeerNotStartedError("Peer is not initialized")
+
+    peer_id = _resolve_peer_id(peer, peer_id_str)
+    tag_store = _tag_store_for(peer)
+
+    info = tag_store.get_tag_info(peer_id)
+    if info is None or tag not in info.tags:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Peer {peer_id_str} has no tag {tag!r}",
+        )
+    old_value = info.tags[tag]
+    tag_store.untag_peer(peer_id, tag)
+    return {"Peer": str(peer_id), "Tag": tag, "RemovedValue": old_value}

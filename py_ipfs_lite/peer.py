@@ -1567,7 +1567,6 @@ class Peer:
         (returns the CID string).
         """
         self._ensure_started()
-        t_val = timeout if timeout is not None else self.config.default_timeout
         chunk_size: int | None = None
         if params is not None and params.chunker and params.chunker.startswith("size-"):
             try:

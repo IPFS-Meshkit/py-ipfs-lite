@@ -589,7 +589,8 @@ async def debug_routing_table(request: Request) -> Any:
 @app.post("/api/v0/pubsub/ls")
 @app.get("/api/v0/pubsub/ls")
 async def pubsub_ls(request: Request) -> Any:
-    """List our pubsub subscriptions and topics peers have announced.
+    """
+    List our pubsub subscriptions and topics peers have announced.
 
     ``peer_topics`` is live topic discovery: it shows every topic that at
     least one currently-connected peer has subscribed to (via gossipsub
@@ -599,9 +600,7 @@ async def pubsub_ls(request: Request) -> Any:
     peer: Peer = request.app.state.peer
     ps = getattr(peer, "pubsub", None)
     if ps is None:
-        return JSONResponse(
-            content={"error": "pubsub not enabled"}, status_code=400
-        )
+        return JSONResponse(content={"error": "pubsub not enabled"}, status_code=400)
 
     my_topics = sorted(str(t) for t in getattr(ps, "topic_ids", ()) or ())
     peer_topics: dict[str, int] = {}
@@ -697,7 +696,9 @@ async def debug_memory(request: Request) -> Any:
         for t in task_objs:
             if hasattr(t, "coro") and hasattr(t.coro, "cr_code"):
                 co = t.coro.cr_code
-                task_counts[f"{co.co_filename.split('/')[-1]}:{co.co_name}:{co.co_firstlineno}"] += 1
+                task_counts[
+                    f"{co.co_filename.split('/')[-1]}:{co.co_name}:{co.co_firstlineno}"
+                ] += 1
             else:
                 task_counts[getattr(t, "name", "unknown")] += 1
     except Exception:
@@ -713,7 +714,9 @@ async def debug_memory(request: Request) -> Any:
                     if isinstance(r, dict):
                         server_conn_referrers.append(f"dict(keys={list(r.keys())[:5]})")
                     else:
-                        server_conn_referrers.append(f"{type(r).__name__}: {str(r)[:80]}")
+                        server_conn_referrers.append(
+                            f"{type(r).__name__}: {str(r)[:80]}"
+                        )
                 except Exception:
                     pass
     except Exception:
@@ -727,6 +730,7 @@ async def debug_memory(request: Request) -> Any:
         import os
 
         import psutil
+
         proc = psutil.Process(os.getpid())
         rss_before_trim = proc.memory_info().rss / (1024 * 1024)
         libc = ctypes.CDLL("libc.so.6")
@@ -742,7 +746,9 @@ async def debug_memory(request: Request) -> Any:
             "rss_after_trim_mb": round(rss_after_trim, 2),
             "server_conns_count": len(server_conns),
             "server_conn_referrers": server_conn_referrers,
-            "top_tasks": [{"task": k, "count": int(v)} for k, v in task_counts.most_common(20)],
+            "top_tasks": [
+                {"task": k, "count": int(v)} for k, v in task_counts.most_common(20)
+            ],
             "top_by_count": top_by_count,
             "top_by_size": top_by_size,
             "subsystems": subsystems,
@@ -805,3 +811,92 @@ async def swarm_disconnect(
 
     await swarm_service.disconnect_peer(peer, arg)
     return JSONResponse(content={"Strings": [f"disconnect {arg} success"]})
+
+
+@app.post("/api/v0/swarm/protect")
+async def swarm_protect(
+    request: Request,
+    arg: str = Query(
+        ..., description="The peer ID (or multiaddr) to protect from pruning"
+    ),
+    tag: str = Query(
+        default="keep-alive",
+        min_length=1,
+        description="Protection tag (scopes ownership of the protection)",
+    ),
+) -> Any:
+    """Protect a peer's connection from being pruned by the connection manager."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    result = await swarm_service.protect_peer(peer, arg, tag)
+    return JSONResponse(content=result)
+
+
+@app.post("/api/v0/swarm/unprotect")
+async def swarm_unprotect(
+    request: Request,
+    arg: str = Query(..., description="The peer ID (or multiaddr) to unprotect"),
+    tag: str = Query(
+        default="keep-alive",
+        min_length=1,
+        description="Protection tag previously used with /swarm/protect",
+    ),
+) -> Any:
+    """Remove a previously applied peer protection."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    result = await swarm_service.unprotect_peer(peer, arg, tag)
+    return JSONResponse(content=result)
+
+
+@app.get("/api/v0/swarm/protection")
+async def swarm_protection(request: Request) -> Any:
+    """List all protected peers with their protection tags and values."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    peers = await swarm_service.list_protected_peers(peer)
+    return JSONResponse(content={"count": len(peers), "peers": peers})
+
+
+@app.get("/api/v0/swarm/tags")
+async def swarm_tags_list(request: Request) -> Any:
+    """List every tagged peer with its tag map, total value and protections."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    result = await swarm_service.list_peer_tags(peer)
+    return JSONResponse(content=result)
+
+
+@app.post("/api/v0/swarm/tags")
+async def swarm_tags_set(
+    request: Request,
+    arg: str = Query(..., description="The peer ID (or multiaddr) to tag"),
+    tag: str = Query(..., min_length=1, description="Tag name"),
+    value: int = Query(
+        ...,
+        description="Integer weight for the tag (negative values demote the peer)",
+    ),
+) -> Any:
+    """Assign an arbitrary connection-manager tag with an integer weight."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    return JSONResponse(content=await swarm_service.set_peer_tag(peer, arg, tag, value))
+
+
+@app.delete("/api/v0/swarm/tags")
+@app.post("/api/v0/swarm/tags/remove")
+async def swarm_tags_remove(
+    request: Request,
+    arg: str = Query(..., description="The peer ID (or multiaddr) to untag"),
+    tag: str = Query(..., min_length=1, description="Tag name to remove"),
+) -> Any:
+    """Remove a previously assigned tag from a peer."""
+    peer: Peer = request.app.state.peer
+    from py_ipfs_lite.services import swarm_service
+
+    return JSONResponse(content=await swarm_service.remove_peer_tag(peer, arg, tag))
