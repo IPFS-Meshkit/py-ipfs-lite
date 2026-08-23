@@ -1114,7 +1114,7 @@ async def ls_unixfs(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Not a dag-pb node: {e}") from e
 
-    if unixfs is None or unixfs.Type != 1:  # 1 = Directory
+    if unixfs is None or unixfs.type != "directory":
         raise HTTPException(status_code=400, detail="Node is not a unixfs directory")
 
     entries = []
