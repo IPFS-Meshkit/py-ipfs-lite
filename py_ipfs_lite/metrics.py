@@ -14,9 +14,8 @@ IPFS_BLOCKSTORE_BLOCKS_TOTAL = Gauge(
 )
 
 # Bitswap Metrics
-IPFS_BITSWAP_BYTES_SENT_TOTAL = Counter(
-    "ipfs_bitswap_bytes_sent_total", "Total bytes sent over bitswap"
-)
+# Bitswap bytes *sent* are instrumented inside py-libp2p itself:
+# see the `bitswap_block_sent_bytes` histogram exposed on /metrics.
 
 IPFS_BITSWAP_BYTES_RECEIVED_TOTAL = Counter(
     "ipfs_bitswap_bytes_received_total", "Total bytes received over bitswap"
