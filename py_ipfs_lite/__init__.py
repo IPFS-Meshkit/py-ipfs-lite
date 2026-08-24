@@ -4,6 +4,7 @@ from py_ipfs_lite.peer import (
     IPLDNode,
     Peer,
     PeerSession,
+    PeerState,
     SeekableReader,
     default_bootstrap_peers,
     new_in_memory_datastore,
@@ -12,6 +13,7 @@ from py_ipfs_lite.peer import (
 
 __all__ = [
     "Peer",
+    "PeerState",
     "Config",
     "AddParams",
     "Host",

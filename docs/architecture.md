@@ -9,8 +9,9 @@ ______________________________________________________________________
 
 ## 1. Component Overview
 
-The central object in `py-ipfs-lite` is the `Peer` class, defined in
-[`py_ipfs_lite/peer.py`](../py_ipfs_lite/peer.py). It is the public API surface — everything
+The central object in `py-ipfs-lite` is the `Peer` class, defined in the
+[`py_ipfs_lite/peer/`](../py_ipfs_lite/peer/) package (see
+[Peer internals](#7-peer-package-internals)). It is the public API surface — everything
 a user or embedding application interacts with goes through `Peer`.
 
 `Peer` orchestrates **five subsystems**, each defined as a `Protocol` interface in
@@ -196,7 +197,7 @@ The critical invariant for GC correctness is: **a block must not be deleted whil
 being written**. The original implementation used a single `trio.Lock`, which serialized
 all `add_file`, `add_node`, and `gc()` calls.
 
-The current implementation uses a custom `RWLock` (reader-writer lock) defined in `peer.py`:
+The current implementation uses a custom `RWLock` (reader-writer lock) defined in `peer/ipld.py`:
 
 - **Read lock** (`async with self._gc_lock.read_lock()`): taken by `add_file()` and `add_node()`.
   Multiple read locks can be held simultaneously — concurrent ingestion tasks do not block
@@ -308,7 +309,7 @@ Understanding the boundary helps contributors decide where a fix belongs.
 - The IPNS publish/resolve/validate logic (including V2 cryptographic verification)
 - The CAR v1 export/import with async I/O (`trio.open_file`)
 - The Prometheus metrics instrumentation layer (`MetricsBlockStore`, `RoutingAdapter`)
-- The HTTP API (`api.py`) and CLI (`cli.py`)
+- The HTTP API (`api/` package) and CLI (`cli.py`)
 
 If a bug is in the Bitswap wire protocol, it belongs in py-libp2p. If a bug is in how
 blocks are pinned, GC'd, announced, or served over HTTP, it belongs here.
@@ -318,3 +319,43 @@ blocks are pinned, GC'd, announced, or served over HTTP, it belongs here.
 > merged into the canonical `libp2p/py-libp2p` repository via
 > [PR #1321](https://github.com/libp2p/py-libp2p/pull/1321). This means the interoperability
 > work is now part of the reference Python libp2p implementation.
+
+
+## 7. Peer & API package internals
+
+As of the 2026-08 modularisation, both formerly monolithic modules are packages.
+
+### 7.1 `py_ipfs_lite/peer/`
+
+| Module | Responsibility |
+| ------ | -------------- |
+| `core.py`        | `Peer` facade composing the mixins; shared attribute surface |
+| `_hostfactory.py`| Construction of host / DHT / blockstore / exchange / DAG service |
+| `_lifecycle.py`  | `start()`, `close()`, `bootstrap()`, routing-table warm-up |
+| `_maintenance.py`| Keep-alive ping loop, connection pruner, stream-leak monitor |
+| `_pubsub.py`     | GossipSub init, adaptive topic discovery, subscribe/publish |
+| `_content.py`    | Files (`add_file`/`get_file`), DAG nodes, pins, GC, sessions |
+| `_naming.py`     | IPNS publish/resolve, CAR import/export |
+| `ipld.py`        | `IPLDNode`, codec helpers, `PeerSession`, `RWLock`, `GCResult` |
+| `setup.py`       | libp2p bootstrap helpers, metrics attachment |
+| `state.py`       | `PeerState` enum |
+
+### 7.2 `py_ipfs_lite/api/`
+
+| Module | Routes |
+| ------ | ------ |
+| `main.py`            | App factory, lifespan, exception handlers |
+| `routers/content.py` | `/add`, `/cat`, `/ls` |
+| `routers/blocks.py`  | `/block/*` |
+| `routers/dag.py`     | `/dag/*`, `/refs` |
+| `routers/pins.py`    | `/pin/*` |
+| `routers/repo.py`    | `/repo/*`, `/refs/local` |
+| `routers/node.py`    | `/id`, `/version` |
+| `routers/swarm.py`   | `/swarm/*` incl. tags/protection |
+| `routers/naming.py`  | `/name/*` |
+| `routers/pubsub.py`  | `/pubsub/*` |
+| `routers/dht.py`     | `/dht/provide` |
+| `routers/ops.py`     | metrics + debug endpoints |
+
+Both packages keep their previous import paths working:
+`from py_ipfs_lite.peer import Peer` and `from py_ipfs_lite.api import app`.

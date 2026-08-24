@@ -1,5 +1,11 @@
 # Connection Manager — Deep-Dive Audit Report
 
+> **⚠️ Historical document.** Line numbers below refer to the pre-2026-08
+> monolithic `peer.py` layout; the module has since been split into the
+> `py_ipfs_lite/peer/` package. The `IPFS_LITE_CONN_MGR_INBOUND_SLOTS`
+> "never read" finding on this page was fixed in commit `f6c11c07`.
+
+
 **Date:** 2026-08-19 · **Node:** `py-ipfs-lite-dev` container `ipfs-node` (rebooted 09:31 UTC)
 **Config (env):** `IPFS_LITE_CONN_MGR_LOW_WATER=400`, `HIGH_WATER=600`
 **Code:** py-libp2p (sibling repo `/Users/sumanjeet/code/py-libp2p`) + `py_ipfs_lite`
