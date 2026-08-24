@@ -1,0 +1,1852 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Embeddable lightweight IPFS peer for Python">
+      
+      
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>[Architecture] py-ipfs-lite Metrics & Telemetry: Real-Time Node Visibility, Diagnostics, and Lifecycle Tracking - py-ipfs-lite</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture-py-ipfs-lite-metrics-telemetry-real-time-node-visibility-diagnostics-and-lifecycle-tracking" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="py-ipfs-lite" class="md-header__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            py-ipfs-lite
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              [Architecture] py-ipfs-lite Metrics &amp; Telemetry: Real-Time Node Visibility, Diagnostics, and Lifecycle Tracking
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../comparison/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Comparison
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/01-your-first-peer/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/ai-agents-and-rag/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="py-ipfs-lite" class="md-nav__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    py-ipfs-lite
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/01-your-first-peer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 01: Your First Peer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/02-running-a-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 02: Running a Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ai-agents-and-rag/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Agents and RAG with py-ipfs-lite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/car-files-and-filecoin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CAR Files and Filecoin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/dht-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DHT and Routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/http-api-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/interop-with-kubo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interoperability with Kubo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ipns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPNS — Mutable Names over Immutable CIDs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/persistence-and-gc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence and Garbage Collection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/production-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/streaming-large-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Large Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/examples-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/http-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/python-sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Executive Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-telemetry-architecture-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Telemetry Architecture Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-complete-prometheus-metrics-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Complete Prometheus Metrics Catalog
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Complete Prometheus Metrics Catalog">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-swarm-connection-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Swarm &amp; Connection Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-auto-connector-pipeline-watermarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. Auto-Connector Pipeline &amp; Watermarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-multiplexed-streams-leak-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C. Multiplexed Streams &amp; Leak Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d-bitswap-content-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D. Bitswap &amp; Content Routing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e-blockstore-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E. Blockstore &amp; Storage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f-host-process-resource-footprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F. Host Process &amp; Resource Footprint
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-live-diagnostic-inspection-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Live Diagnostic &amp; Inspection Endpoints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Live Diagnostic &amp; Inspection Endpoints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-swarm-peers-get-apiv0swarmpeers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Swarm Peers (GET /api/v0/swarm/peers)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-stream-leak-watchdog-get-apiv0swarmstream_stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Stream Leak Watchdog (GET /api/v0/swarm/stream_stats)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-memory-runtime-profiling-get-apiv0debugmemory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Memory &amp; Runtime Profiling (GET /api/v0/debug/memory)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-routing-table-peerstore-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Routing Table &amp; PeerStore Inventory
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-dashboarding-frontend-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Dashboarding &amp; Frontend Roadmap
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Dashboarding &amp; Frontend Roadmap">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#planned-visualizations-tooling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned Visualizations &amp; Tooling:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-questions-for-the-community" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Questions for the Community
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture-py-ipfs-lite-metrics-telemetry-real-time-node-visibility-diagnostics-and-lifecycle-tracking">[Architecture] py-ipfs-lite Metrics &amp; Telemetry: Real-Time Node Visibility, Diagnostics, and Lifecycle Tracking</h1>
+<ul>
+<li><strong>Category:</strong> Observability &amp; Developer Experience / Architecture</li>
+<li><strong>Status:</strong> Draft / Open for Feedback</li>
+<li><strong>Target Audience:</strong> Node Operators, Frontend/Dashboard Developers, Core Contributors, and SREs</li>
+</ul>
+<hr />
+<h2 id="1-executive-summary">1. Executive Summary</h2>
+<p>Operating a peer-to-peer node in production requires continuous, granular visibility into what the node is doing across its entire lifecycle:
+* <em>How many peers are connected, and what transports (TCP vs. QUIC-v1) are they using?</em>
+* <em>Are connections stable over time, or is the node experiencing rapid connection churn?</em>
+* <em>Are any async coroutines or multiplexed streams leaking in memory?</em>
+* <em>What is our Bitswap throughput and DHT query latency distribution?</em></p>
+<p><code>py-ipfs-lite</code> features an end-to-end <strong>observability and telemetry architecture</strong> combining:
+1. <strong>Prometheus Exposition:</strong> Standard <code>/metrics</code> endpoint exposing 25+ real-time gauges, counters, and latency histograms.
+2. <strong>HTTP Swarm &amp; Diagnostic APIs:</strong> Kubo-compatible <code>/api/v0/</code> endpoints for real-time peer, stream, and routing inspection.
+3. <strong>Deep Runtime Introspection:</strong> <code>/api/v0/debug/memory</code> object tracking, Trio task profiling, and glibc arena trim analysis.
+4. <strong>Automated Stream Leak Watchdog:</strong> Proactive background monitor detecting and tracking orphaned streams.</p>
+<p>This document details the metrics architecture, explains what each metric represents, and outlines our roadmap for pre-built Grafana dashboards and web frontend integrations.</p>
+<hr />
+<h2 id="2-telemetry-architecture-overview">2. Telemetry Architecture Overview</h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>                      ┌─────────────────────────────────────────────────────────┐
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                      │                   py-ipfs-lite Daemon                   │
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                      └────────────────────────────┬────────────────────────────┘
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>                                                   │
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                ┌──────────────────────────────────┴──────────────────────────────────┐
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>                │                                                                     │
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>                ▼                                                                     ▼
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>   ┌──────────────────────────┐                                          ┌──────────────────────────┐
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>   │ Prometheus Metrics Store │                                          │ HTTP Swarm &amp; Diagnostics │
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>   │ (py_ipfs_lite.metrics)   │                                          │ (py_ipfs_lite.api)       │
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>   └────────────┬─────────────┘                                          └────────────┬─────────────┘
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>                │                                                                     │
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                ▼                                                                     ▼
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>   GET /metrics                                                           GET /api/v0/swarm/peers
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>   GET /debug/metrics/prometheus                                          GET /api/v0/swarm/connection_stats
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>        │                                                                 GET /api/v0/swarm/stream_stats
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>        ▼                                                                 GET /api/v0/debug/memory
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>   [ Prometheus / Grafana / Datadog ]                                     GET /debug/conns
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>                                                                               │
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                                                                               ▼
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>                                                                  [ WebUI / CLI Tools / Scripts ]
+</span></code></pre></div>
+<hr />
+<h2 id="3-complete-prometheus-metrics-catalog">3. Complete Prometheus Metrics Catalog</h2>
+<p>All Prometheus metrics are exposed with the <code>ipfs_</code> prefix at <code>GET /metrics</code> and <code>GET /debug/metrics/prometheus</code>:</p>
+<h3 id="a-swarm-connection-lifecycle">A. Swarm &amp; Connection Lifecycle</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Labels</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_peers</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Current count of unique active swarm peers.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_connections_total</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total raw active connections across all transports.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_connections</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;"><code>transport</code>, <code>direction</code></td>
+<td style="text-align: left;">Active connections categorized by transport (<code>tcp</code>, <code>quic-v1</code>, <code>ws</code>) and direction (<code>inbound</code>, <code>outbound</code>, <code>all</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_peers_by_age</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;"><code>age_bucket</code></td>
+<td style="text-align: left;">Number of active peers in duration tiers: <code>under_2m</code>, <code>2m_to_5m</code>, <code>5m_to_10m</code>, <code>10m_to_30m</code>, <code>over_30m</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_peers_connected_over_5m</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Gauge tracking peers connected continuously for $&gt;5\text{ minutes}$.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_peers_connected_over_10m</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Gauge tracking peers connected continuously for $&gt;10\text{ minutes}$.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_peers_connected_over_30m</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Gauge tracking long-lived anchor peers connected for $&gt;30\text{ minutes}$.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_connects_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;"><code>transport</code></td>
+<td style="text-align: left;">Lifetime counter of successful connections established.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_disconnects_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;"><code>transport</code></td>
+<td style="text-align: left;">Lifetime counter of disconnection events.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_swarm_disconnect_reasons_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;"><code>reason_hint</code></td>
+<td style="text-align: left;">Disconnection root causes: <code>remote_closed_or_idle</code>, <code>handshake_failed_or_dial_cancelled</code>, <code>idle_timeout</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b-auto-connector-pipeline-watermarks">B. Auto-Connector Pipeline &amp; Watermarks</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Labels</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ipfs_autoconnector_state</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;"><code>metric</code></td>
+<td style="text-align: left;">Live configuration and state values: <code>low_watermark</code>, <code>high_watermark</code>, <code>min_connections</code>, <code>max_connections</code>, <code>in_flight_dials</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="c-multiplexed-streams-leak-detection">C. Multiplexed Streams &amp; Leak Detection</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Labels</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ipfs_streams_active</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;"><code>protocol</code></td>
+<td style="text-align: left;">Live open streams per protocol (<code>/ipfs/kad/1.0.0</code>, <code>/ipfs/bitswap/1.2.0</code>, <code>/ipfs/id/1.0.0</code>, <code>/ipfs/id/push/1.0.0</code>, <code>/ipfs/ping/1.0.0</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_streams_active_by_direction</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;"><code>direction</code></td>
+<td style="text-align: left;">Live open streams broken down by <code>inbound</code> vs <code>outbound</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_streams_by_protocol_total</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;"><code>direction</code>, <code>protocol</code></td>
+<td style="text-align: left;">Cumulative streams opened across protocol and direction.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_streams_opened_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total network streams opened since node boot.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_streams_closed_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total network streams closed cleanly.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_streams_leaked_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total suspected leaked streams flagged by the background watchdog (lifetime $&gt;300\text{s}$).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_streams_resets_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total stream reset events observed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="d-bitswap-content-routing">D. Bitswap &amp; Content Routing</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Labels</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ipfs_bitswap_bytes_sent_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Cumulative bytes sent to remote peers over Bitswap.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_bitswap_bytes_received_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Cumulative bytes downloaded from remote peers over Bitswap.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_bitswap_messages_sent_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total Bitswap Protobuf messages transmitted.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_bitswap_messages_received_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total Bitswap Protobuf messages received.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_dht_query_latency_seconds</code></td>
+<td style="text-align: left;">Histogram</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Latency distribution of DHT <code>find_providers</code> and peer routing queries.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="e-blockstore-storage">E. Blockstore &amp; Storage</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Labels</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ipfs_blockstore_blocks_total</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total number of blocks stored locally in the Blockstore.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_blockstore_size_bytes</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total storage size consumed by raw blocks in bytes.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_gc_runs_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Total number of garbage collection cycles executed.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_gc_reclaimed_blocks_total</code></td>
+<td style="text-align: left;">Counter</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Cumulative unpinned blocks reclaimed by GC.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="f-host-process-resource-footprint">F. Host Process &amp; Resource Footprint</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric Name</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Labels</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ipfs_process_cpu_percent</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">High-precision CPU utilization percentage of the node process.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_process_memory_rss_bytes</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Resident Set Size (physical RAM) in bytes.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_process_memory_vms_bytes</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Virtual Memory Size in bytes.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_process_open_fds</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Active file descriptor count (monitors OS socket limits).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ipfs_process_uptime_seconds</code></td>
+<td style="text-align: left;">Gauge</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">Node process uptime in seconds.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-live-diagnostic-inspection-endpoints">4. Live Diagnostic &amp; Inspection Endpoints</h2>
+<p>For interactive CLI debugging, automated health checks, or web dashboard polling, <code>py-ipfs-lite</code> provides rich JSON endpoints:</p>
+<h3 id="1-swarm-peers-get-apiv0swarmpeers">1. Swarm Peers (<code>GET /api/v0/swarm/peers</code>)</h3>
+<p>Returns the complete list of connected peers with active connection duration, multiaddrs, age tiers, and directional stream counts:
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">"count"</span><span class="p">:</span><span class="w"> </span><span class="mi">189</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">"peers"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="p">{</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">      </span><span class="nt">"peer"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12D3KooWT3Ye1Fo2bXoA4FrTc9B8TTQjw21RdTHLcT8NvZUjifXc"</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">"addrs"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"/ip4/152.53.65.116/tcp/7147"</span><span class="p">],</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">"connected_at"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-08-16T18:40:12.118+00:00"</span><span class="p">,</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">"duration_seconds"</span><span class="p">:</span><span class="w"> </span><span class="mf">312.4</span><span class="p">,</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">"transport"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tcp"</span><span class="p">,</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">      </span><span class="nt">"direction"</span><span class="p">:</span><span class="w"> </span><span class="s2">"outbound"</span><span class="p">,</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">      </span><span class="nt">"age_tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"5m_to_10m"</span><span class="p">,</span>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">      </span><span class="nt">"streams_total"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">      </span><span class="nt">"streams_outbound"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">      </span><span class="nt">"streams_inbound"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="p">}</span>
+</span></code></pre></div></p>
+<h3 id="2-stream-leak-watchdog-get-apiv0swarmstream_stats">2. Stream Leak Watchdog (<code>GET /api/v0/swarm/stream_stats</code>)</h3>
+<p>Snapshot of the background stream leak monitor:
+<div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">"CurrentOpenStreams"</span><span class="p">:</span><span class="w"> </span><span class="mi">25</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">"ActiveOutboundStreams"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">"ActiveInboundStreams"</span><span class="p">:</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">"TotalOutboundOpened"</span><span class="p">:</span><span class="w"> </span><span class="mi">4250</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">"TotalInboundOpened"</span><span class="p">:</span><span class="w"> </span><span class="mi">13341</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">"SuspectedLeakedStreams"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">"AverageStreamLifetimeSeconds"</span><span class="p">:</span><span class="w"> </span><span class="mf">4.12</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">}</span>
+</span></code></pre></div></p>
+<h3 id="3-memory-runtime-profiling-get-apiv0debugmemory">3. Memory &amp; Runtime Profiling (<code>GET /api/v0/debug/memory</code>)</h3>
+<p>Deep memory and coroutine introspection:
+<div class="language-json highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">"total_objects"</span><span class="p">:</span><span class="w"> </span><span class="mi">381281</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">"rss_before_trim_mb"</span><span class="p">:</span><span class="w"> </span><span class="mf">215.47</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">"rss_after_trim_mb"</span><span class="p">:</span><span class="w"> </span><span class="mf">205.32</span><span class="p">,</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">"server_conns_count"</span><span class="p">:</span><span class="w"> </span><span class="mi">189</span><span class="p">,</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">"top_tasks"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="p">{</span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AutoConnector._reconnect_loop"</span><span class="p">,</span><span class="w"> </span><span class="nt">"count"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="p">{</span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"RTRefreshManager._refresh_loop"</span><span class="p">,</span><span class="w"> </span><span class="nt">"count"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="p">{</span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"swarm_stream_handler"</span><span class="p">,</span><span class="w"> </span><span class="nt">"count"</span><span class="p">:</span><span class="w"> </span><span class="mi">24</span><span class="p">}</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="p">}</span>
+</span></code></pre></div></p>
+<h3 id="4-routing-table-peerstore-inventory">4. Routing Table &amp; PeerStore Inventory</h3>
+<ul>
+<li><code>GET /api/v0/debug/routing_table</code>: Returns total count and peer IDs currently resident in K-buckets.</li>
+<li><code>GET /api/v0/debug/peerstore</code>: Returns total count and peer IDs stored in the PeerStore.</li>
+</ul>
+<hr />
+<h2 id="5-dashboarding-frontend-roadmap">5. Dashboarding &amp; Frontend Roadmap</h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>┌──────────────────────────────────────────────────────────────────────────────────────────┐
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>│                                py-ipfs-lite Web Dashboard                                │
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>├──────────────────────────────────────────────────────────────────────────────────────────┤
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>│                                                                                          │
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>│  [ Swarm Status ]              [ Memory &amp; Host ]              [ Bitswap &amp; DHT ]          │
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>│  ● 189 Connected Peers         ● RSS: 205 MB (Trimmed)        ● Downloaded: 45.2 MB      │
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>│  ● 138 TCP / 97 QUIC-v1        ● CPU: 8.7%                    ● Uploaded: 12.1 MB        │
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>│  ● In-Flight Dials: 15 / 20    ● Open FDs: 260                ● DHT Avg Latency: 240ms   │
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>│                                                                                          │
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>├──────────────────────────────────────────────────────────────────────────────────────────┤
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>│  [ Peer Duration Tiers ]                                                                 │
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>│  ■ Under 2m (97)   ■ 2m-5m (11)   ■ 5m-10m (27)   ■ 10m-30m (97)   ■ Over 30m (0)        │
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>│                                                                                          │
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>├──────────────────────────────────────────────────────────────────────────────────────────┤
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>│  [ Active Multiplexed Streams ]                                                          │
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>│  • /ipfs/kad/1.0.0 (12)    • /ipfs/bitswap/1.2.0 (7)    • /ipfs/id/1.0.0 (3)             │
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>│                                                                                          │
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>└──────────────────────────────────────────────────────────────────────────────────────────┘
+</span></code></pre></div>
+<h3 id="planned-visualizations-tooling">Planned Visualizations &amp; Tooling:</h3>
+<ol>
+<li><strong>Official Grafana Dashboard Template:</strong></li>
+<li>Bundling a production-ready <code>grafana-dashboard.json</code> in <code>docs/dashboards/</code> tracking swarm watermarks, peer duration distribution, and Bitswap throughput over 1h/24h/7d windows.</li>
+<li><strong>Interactive WebUI Status Page:</strong></li>
+<li>A lightweight, self-contained single-page dashboard served at <code>/webui</code> or <code>/status</code> rendering real-time peer topology, age charts, and diagnostic controls.</li>
+<li><strong>Event Streaming / WebSocket Hook:</strong></li>
+<li>Exposing a <code>/api/v0/events</code> WebSocket stream streaming live DHT random walks, peer connect/disconnect events, and block transfer updates.</li>
+</ol>
+<hr />
+<h2 id="6-questions-for-the-community">6. Questions for the Community</h2>
+<ol>
+<li><strong>Dashboard Preferences:</strong> Do you prefer standalone Grafana dashboards scraped via Prometheus, or an embedded lightweight WebUI directly built into the daemon?</li>
+<li><strong>Additional Metrics:</strong> What additional subsystem metrics (e.g., IPNS publish latency, CAR export speed, UnixFS DAG traversal rate) would you like to see added?</li>
+<li><strong>Alerting Rules:</strong> What standard Prometheus alerting rules (e.g., <code>PeerCountDropAlert</code>, <code>StreamLeakDetectedAlert</code>, <code>MemoryThresholdAlert</code>) would be most useful as defaults?</li>
+</ol>
+<hr />
+<p><em>Please share your feedback, monitoring setups, and ideas in the discussion below!</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

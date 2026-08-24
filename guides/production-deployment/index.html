@@ -1,0 +1,1987 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Embeddable lightweight IPFS peer for Python">
+      
+      
+      
+      
+        <link rel="prev" href="../persistence-and-gc/">
+      
+      
+        <link rel="next" href="../streaming-large-files/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Production Deployment - py-ipfs-lite</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#production-deployment" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="py-ipfs-lite" class="md-header__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            py-ipfs-lite
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Production Deployment
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../comparison/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Comparison
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/01-your-first-peer/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../ai-agents-and-rag/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="py-ipfs-lite" class="md-nav__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    py-ipfs-lite
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/01-your-first-peer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 01: Your First Peer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/02-running-a-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 02: Running a Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-agents-and-rag/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Agents and RAG with py-ipfs-lite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../car-files-and-filecoin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CAR Files and Filecoin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dht-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DHT and Routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../http-api-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../interop-with-kubo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interoperability with Kubo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ipns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPNS — Mutable Names over Immutable CIDs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../persistence-and-gc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence and Garbage Collection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#connection-manager-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Manager Tuning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Connection Manager Tuning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tuning-for-your-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning for your environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootstrap-peers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootstrap Peers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootstrap Peers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-the-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using the defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-your-own-bootstrap-peers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using your own bootstrap peers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stable-peerid-across-restarts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable PeerID across restarts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#timeout-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeout Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Limitations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Limitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#carv1-only-no-carv2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CARv1 only — no CARv2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ipns-sequence-numbers-are-timestamp-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IPNS sequence numbers are timestamp-based
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upstream-merkledagadd_file-blocking-io" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream MerkleDag.add_file blocking I/O
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ipni-provide-is-unauthenticated-by-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IPNI provide() is unauthenticated — by design
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security Notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What IS verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is NOT verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secio-is-fully-removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SECIO is fully removed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-api-has-no-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP API has no authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-flight-checklist-for-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-flight Checklist for Production
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../streaming-large-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Large Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/examples-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/http-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/python-sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#connection-manager-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection Manager Tuning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Connection Manager Tuning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tuning-for-your-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning for your environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootstrap-peers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootstrap Peers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootstrap Peers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-the-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using the defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-your-own-bootstrap-peers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using your own bootstrap peers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stable-peerid-across-restarts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable PeerID across restarts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#timeout-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeout Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Limitations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Limitations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#carv1-only-no-carv2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CARv1 only — no CARv2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ipns-sequence-numbers-are-timestamp-based" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IPNS sequence numbers are timestamp-based
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upstream-merkledagadd_file-blocking-io" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream MerkleDag.add_file blocking I/O
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ipni-provide-is-unauthenticated-by-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IPNI provide() is unauthenticated — by design
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security Notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What IS verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is NOT verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secio-is-fully-removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SECIO is fully removed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-api-has-no-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP API has no authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-flight-checklist-for-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-flight Checklist for Production
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="production-deployment">Production Deployment</h1>
+<p>This guide covers the configuration knobs, known limitations, and security properties
+you need to understand before running <code>py-ipfs-lite</code> in a production environment.
+It intentionally documents the rough edges — reading this once is better than
+discovering them yourself at 2 AM.</p>
+<hr />
+<h2 id="connection-manager-tuning">Connection Manager Tuning</h2>
+<p>Every libp2p peer maintains open connections to other peers. Without bounds, long-running
+nodes accumulate hundreds or thousands of connections, exhausting file descriptors and
+memory. The connection manager enforces two thresholds:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Config</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">conn_mgr_high_water</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span>   <span class="c1"># start pruning above this many connections</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">conn_mgr_low_water</span><span class="o">=</span><span class="mi">600</span><span class="p">,</span>    <span class="c1"># prune down to this count</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>conn_mgr_high_water</code></td>
+<td><code>900</code></td>
+<td>When the open connection count crosses this, the pruner kicks in</td>
+</tr>
+<tr>
+<td><code>conn_mgr_low_water</code></td>
+<td><code>600</code></td>
+<td>The pruner closes least-recently-used connections until this target is reached</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tuning-for-your-environment">Tuning for your environment</h3>
+<p><strong>Long-running public-network daemon (default):</strong>
+The defaults are sized for a node that participates in DHT routing and accumulates
+many ambient connections. 900/600 is conservative — most deployments won't approach it.</p>
+<p><strong>Embedded agent process (resource-constrained):</strong>
+Lower both thresholds significantly. A AI Agent agent that only connects to a handful
+of known peers doesn't need 900 connections:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">Config</span><span class="p">(</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">conn_mgr_high_water</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">conn_mgr_low_water</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">)</span>
+</span></code></pre></div>
+<p><strong>Offline / local-network only (<code>offline=True</code>):</strong>
+No DHT bootstrap → far fewer ambient connections. The defaults are fine, but the limits
+will rarely be hit.</p>
+<hr />
+<h2 id="bootstrap-peers">Bootstrap Peers</h2>
+<h3 id="using-the-defaults">Using the defaults</h3>
+<p>The <code>daemon</code>, <code>add</code>, and <code>get</code> subcommands all call <code>peer.bootstrap(DEFAULT_BOOTSTRAP_PEERS)</code>
+automatically after <code>peer.start()</code>. The defaults are the official libp2p infrastructure
+nodes and are sufficient for connecting to the public IPFS network.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">py_ipfs_lite.cli</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_BOOTSTRAP_PEERS</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">await</span> <span class="n">peer</span><span class="o">.</span><span class="n">bootstrap</span><span class="p">(</span><span class="n">DEFAULT_BOOTSTRAP_PEERS</span><span class="p">)</span>
+</span></code></pre></div>
+<h3 id="using-your-own-bootstrap-peers">Using your own bootstrap peers</h3>
+<p>For private or air-gapped networks, replace the defaults entirely:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">MY_BOOTSTRAP</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="s2">"/ip4/10.0.0.1/tcp/4001/p2p/12D3KooW..."</span><span class="p">,</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="s2">"/ip4/10.0.0.2/tcp/4001/p2p/12D3KooW..."</span><span class="p">,</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">]</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">await</span> <span class="n">peer</span><span class="o">.</span><span class="n">bootstrap</span><span class="p">(</span><span class="n">MY_BOOTSTRAP</span><span class="p">)</span>
+</span></code></pre></div>
+<p><code>bootstrap()</code> is just a <code>peer.host.connect()</code> loop — it does not write anything
+persistent. If a bootstrap peer is unreachable, the call logs a warning and continues
+with the remaining peers. One successful connection is enough to join the DHT.</p>
+<h3 id="stable-peerid-across-restarts">Stable PeerID across restarts</h3>
+<p>Without a seed, a new Ed25519 key pair is generated on every process start. Remote peers
+that cached your old PeerID will not be able to dial you by ID after a restart. For
+long-running daemons, use a fixed seed:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>uv<span class="w"> </span>run<span class="w"> </span>py-ipfs-lite<span class="w"> </span>daemon<span class="w"> </span>--api<span class="w"> </span>--seed<span class="w"> </span><span class="s2">"my-stable-seed"</span>
+</span></code></pre></div>
+<p>Or in the SDK:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">libp2p.crypto.ed25519</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_new_key_pair</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">seed</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="sa">b</span><span class="s2">"my-stable-seed"</span><span class="p">)</span><span class="o">.</span><span class="n">digest</span><span class="p">()</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">key_pair</span> <span class="o">=</span> <span class="n">create_new_key_pair</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="n">seed</span><span class="p">)</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">peer</span> <span class="o">=</span> <span class="n">Peer</span><span class="p">(</span><span class="n">Config</span><span class="p">(),</span> <span class="n">host_key</span><span class="o">=</span><span class="n">key_pair</span><span class="p">,</span> <span class="n">listen_addrs</span><span class="o">=</span><span class="p">[</span><span class="s2">"/ip4/0.0.0.0/tcp/4001"</span><span class="p">])</span>
+</span></code></pre></div>
+<p>The seed is deterministic — the same bytes always produce the same Ed25519 key pair and
+therefore the same PeerID.</p>
+<hr />
+<h2 id="timeout-configuration">Timeout Configuration</h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">Config</span><span class="p">(</span><span class="n">default_timeout</span><span class="o">=</span><span class="mf">30.0</span><span class="p">)</span>   <span class="c1"># seconds</span>
+</span></code></pre></div>
+<p><code>default_timeout</code> is used as the per-operation timeout for:</p>
+<ul>
+<li>DHT <code>find_providers</code> during <code>get_file()</code> / <code>get_node()</code></li>
+<li>Bitswap block fetch</li>
+<li>IPNS publish and resolve</li>
+</ul>
+<p><strong>30 seconds is generous</strong> for most operations. On the public network, DHT lookups
+typically complete in 2–10 seconds. Bitswap fetches from a connected peer are usually
+sub-second.</p>
+<p>Lower it for latency-sensitive applications:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">Config</span><span class="p">(</span><span class="n">default_timeout</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Or override per-call:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">data</span> <span class="o">=</span> <span class="k">await</span> <span class="n">peer</span><span class="o">.</span><span class="n">get_file</span><span class="p">(</span><span class="n">cid</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">5.0</span><span class="p">)</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">value</span> <span class="o">=</span> <span class="k">await</span> <span class="n">peer</span><span class="o">.</span><span class="n">resolve_name</span><span class="p">(</span><span class="n">peer_id</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">15.0</span><span class="p">)</span>
+</span></code></pre></div>
+<p>If a timeout is exceeded, <code>get_file()</code> and <code>get_node()</code> raise <code>BlockNotFoundError</code>.
+<code>resolve_name()</code> raises <code>RoutingError</code>.</p>
+<hr />
+<h2 id="known-limitations">Known Limitations</h2>
+<p>These are stated plainly so you can design around them rather than discover them in
+production.</p>
+<h3 id="carv1-only-no-carv2">CARv1 only — no CARv2</h3>
+<p><code>export_car()</code> produces CARv1 with a single root CID. CARv2 (which adds a random-access
+index section) is not produced. <code>import_car()</code> handles both versions on input.</p>
+<p><strong>Impact:</strong> Tools that specifically require CARv2 (e.g. some <code>car</code> CLI subcommands
+with <code>--version=2</code>) will need to convert. <code>lotus client import --car</code> accepts CARv1
+without issue.</p>
+<h3 id="ipns-sequence-numbers-are-timestamp-based">IPNS sequence numbers are timestamp-based</h3>
+<p>Each <code>publish_name()</code> call uses the current Unix timestamp (in nanoseconds) as the
+sequence number. This means:</p>
+<ul>
+<li><strong>Two publishes within the same second</strong> will produce the same sequence number.
+  DHT nodes receiving both records have no basis to prefer one over the other. The
+  effective update may be whichever record propagates last.</li>
+<li><strong>After a process restart</strong>, sequence numbers resume from the current timestamp,
+  which is always higher than any previously published record. Old records are always
+  superseded.</li>
+<li><strong>Sequence numbers carry no semantic meaning</strong> beyond "higher = newer."</li>
+</ul>
+<p><strong>Impact:</strong> Do not publish an IPNS name more than once per second. In practice this
+is never a real constraint — IPNS records are designed to be updated on the order of
+minutes to hours, not sub-second.</p>
+<h3 id="upstream-merkledagadd_file-blocking-io">Upstream <code>MerkleDag.add_file</code> blocking I/O</h3>
+<p>The <code>add_file()</code> call ultimately delegates to <code>MerkleDag.add_file()</code> in <code>py-libp2p</code>,
+which performs synchronous blocking file I/O under a global lock. This limits
+concurrent ingestion throughput.</p>
+<p><strong>Impact:</strong></p>
+<ul>
+<li>Concurrent <code>add_file()</code> calls share a single effective serialization point.</li>
+<li>The throughput ceiling for <code>add_node()</code> (small DAG-JSON/CBOR nodes, no file I/O)
+  is ~850 nodes/sec on modern hardware. For file ingestion, throughput is constrained
+  by the blocking I/O step.</li>
+<li>This is a <code>py-libp2p</code> upstream issue, not a <code>py-ipfs-lite</code> design choice.</li>
+</ul>
+<p><strong>Mitigation:</strong></p>
+<ul>
+<li>For bulk file ingestion workloads, run multiple <code>py-ipfs-lite</code> processes (one per
+  CPU core) rather than multiple <code>Peer</code> instances in one process.</li>
+<li>For DAG node workloads, concurrent <code>add_node()</code> is safe and scales well up to the
+  throughput ceiling.</li>
+</ul>
+<h3 id="ipni-provide-is-unauthenticated-by-design">IPNI <code>provide()</code> is unauthenticated — by design</h3>
+<p><code>DelegatedHTTPRouting.provide()</code> is intentionally a no-op. The IPNI protocol requires
+authentication (Reframe or signed provider records) to accept provider submissions.
+Publishing to IPNI without authentication support is not useful.</p>
+<p><strong>Impact:</strong> CIDs added by <code>py-ipfs-lite</code> are announced to the <strong>KadDHT</strong> only, not to
+<code>cid.contact</code>. If a remote peer uses IPNI exclusively (e.g. a Filecoin SP), it will
+not discover your content via IPNI.</p>
+<p><strong>Mitigation:</strong> Use <code>peer.bootstrap(DEFAULT_BOOTSTRAP_PEERS)</code> so your peer participates
+in the public DHT and CIDs are reachable via DHT lookup.</p>
+<hr />
+<h2 id="security-notes">Security Notes</h2>
+<h3 id="what-is-verified">What IS verified</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Verification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Block integrity on fetch</td>
+<td>Every fetched block's bytes are hashed and compared to the expected CID before being returned. Corrupted or tampered blocks are rejected.</td>
+</tr>
+<tr>
+<td>IPNS record authenticity</td>
+<td><code>resolve_name()</code> verifies the Ed25519 V2 signature, checks that the embedded pubkey matches the expected PeerID, and checks the record has not expired.</td>
+</tr>
+<tr>
+<td>IPNS record freshness</td>
+<td>Records past their <code>validity</code> timestamp are rejected.</td>
+</tr>
+<tr>
+<td>Transport confidentiality</td>
+<td>All connections use Noise (XX pattern) — traffic is encrypted and authenticated at the transport layer.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-is-not-verified">What is NOT verified</h3>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Explanation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IPNI announce-side trust</td>
+<td>Any peer can <code>PUT /routing/v1/providers/{cid}</code> to IPNI claiming to have any CID. There is no cryptographic link between the announcement and the actual content. <strong>This is closed on the fetch side</strong> — block integrity is always verified against the CID.</td>
+</tr>
+<tr>
+<td>DHT provider record authenticity</td>
+<td>Any peer can write a DHT provider record for any CID. Same mitigation: block integrity check on fetch.</td>
+</tr>
+<tr>
+<td>Peer reputation</td>
+<td><code>py-ipfs-lite</code> has no peer scoring or banning system. A peer that repeatedly sends bad data will time out, but is not banned.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="secio-is-fully-removed">SECIO is fully removed</h3>
+<p><code>py-ipfs-lite</code> supports <strong>Noise only</strong> for transport security. The legacy SECIO
+protocol has been removed from <code>py-libp2p</code>. If you attempt to connect to a node
+that requires SECIO (Kubo \&lt; 0.14, 2022 or older), the handshake will fail immediately
+with a protocol negotiation error.</p>
+<p>Any current Kubo release (0.14+) supports Noise as the preferred transport.</p>
+<h3 id="http-api-has-no-authentication">HTTP API has no authentication</h3>
+<p>The HTTP API server has no built-in authentication or rate limiting. It is bound to
+<code>127.0.0.1</code> by default for this reason. <strong>Do not expose the API port to the public
+internet</strong> without placing an authenticating reverse proxy (nginx, Caddy, Traefik) in
+front of it.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Safe: loopback only (default)</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>uv<span class="w"> </span>run<span class="w"> </span>py-ipfs-lite<span class="w"> </span>daemon<span class="w"> </span>--api<span class="w"> </span>--api-host<span class="w"> </span><span class="m">127</span>.0.0.1
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># UNSAFE: binds to all interfaces — only use inside a trusted network or behind a proxy</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>uv<span class="w"> </span>run<span class="w"> </span>py-ipfs-lite<span class="w"> </span>daemon<span class="w"> </span>--api<span class="w"> </span>--api-host<span class="w"> </span><span class="m">0</span>.0.0.0
+</span></code></pre></div>
+<hr />
+<h2 id="pre-flight-checklist-for-production">Pre-flight Checklist for Production</h2>
+<p>Before going live, verify:</p>
+<ul>
+<li>[ ] <code>--seed</code> is set so the PeerID is stable across restarts</li>
+<li>[ ] <code>--blockstore-path</code> points to a volume with sufficient space</li>
+<li>[ ] <code>--api-host</code> is <code>127.0.0.1</code> unless behind a proxy</li>
+<li>[ ] <code>conn_mgr_high_water</code> / <code>conn_mgr_low_water</code> are appropriate for your
+  connection budget</li>
+<li>[ ] <code>reprovide_interval_seconds</code> is set to a value that keeps content discoverable
+  (default 12 h is fine for most cases)</li>
+<li>[ ] Process is managed by systemd or equivalent — not a bare terminal session</li>
+<li>[ ] Log output is captured (<code>&gt; daemon.log 2&gt;&amp;1</code> or journald)</li>
+<li>[ ] You have read the <a href="#known-limitations">Known Limitations</a> section above</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

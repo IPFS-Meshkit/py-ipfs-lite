@@ -1,0 +1,1602 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Embeddable lightweight IPFS peer for Python">
+      
+      
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>[RFC] Swarm Connection Scaling & Dial Throttling: Maintaining 500+ Stable Peers Under Python Async/Trio - py-ipfs-lite</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rfc-swarm-connection-scaling-dial-throttling-maintaining-500-stable-peers-under-python-asynctrio" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="py-ipfs-lite" class="md-header__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            py-ipfs-lite
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              [RFC] Swarm Connection Scaling &amp; Dial Throttling: Maintaining 500+ Stable Peers Under Python Async/Trio
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../comparison/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Comparison
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/01-your-first-peer/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/ai-agents-and-rag/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="py-ipfs-lite" class="md-nav__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    py-ipfs-lite
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/01-your-first-peer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 01: Your First Peer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/02-running-a-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 02: Running a Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ai-agents-and-rag/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Agents and RAG with py-ipfs-lite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/car-files-and-filecoin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CAR Files and Filecoin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/dht-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DHT and Routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/http-api-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/interop-with-kubo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interoperability with Kubo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/ipns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPNS — Mutable Names over Immutable CIDs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/persistence-and-gc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence and Garbage Collection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/production-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/streaming-large-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Large Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/examples-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/http-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/python-sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-executive-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Executive Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-challenges-in-async-python-p2p-networking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Challenges in Async Python P2P Networking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-proposed-architecture-solutions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Proposed Architecture &amp; Solutions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Proposed Architecture &amp; Solutions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-sliding-window-dial-throttling-batching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Sliding-Window Dial Throttling &amp; Batching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-proactive-address-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. Proactive Address Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-two-tier-watermark-connection-pruner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        C. Two-Tier Watermark &amp; Connection Pruner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d-memory-optimization-os-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D. Memory Optimization &amp; OS Tuning
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-configuration-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Configuration &amp; Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-observability-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Observability &amp; Telemetry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Observability &amp; Telemetry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-prometheus-metrics-get-metrics-or-get-debugmetricsprometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A. Prometheus Metrics (GET /metrics or GET /debug/metrics/prometheus)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-http-swarm-diagnostics-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        B. HTTP Swarm &amp; Diagnostics Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-feedback-community-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Feedback &amp; Community Questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rfc-swarm-connection-scaling-dial-throttling-maintaining-500-stable-peers-under-python-asynctrio">[RFC] Swarm Connection Scaling &amp; Dial Throttling: Maintaining 500+ Stable Peers Under Python Async/Trio</h1>
+<ul>
+<li><strong>Category:</strong> Architecture &amp; Networking / RFC</li>
+<li><strong>Status:</strong> Draft / Open for Feedback</li>
+<li><strong>Target Audience:</strong> Core Contributors, Node Operators, and P2P Protocol Developers</li>
+</ul>
+<hr />
+<h2 id="1-executive-summary">1. Executive Summary</h2>
+<p>In a distributed peer-to-peer network like IPFS, maintaining a robust, well-connected swarm of peers (300 to 500+ active connections) is critical for:
+1. <strong>DHT Routing Performance:</strong> Rapid convergence during iterative lookups (<code>FIND_NODE</code>, <code>GET_VALUE</code>, <code>GET_PROVIDERS</code>).
+2. <strong>Bitswap Block Discovery:</strong> Maximizing the likelihood of locating blocks directly from connected peers without initiating heavy network-wide queries.
+3. <strong>PubSub Mesh Reliability:</strong> Ensuring high mesh degree ($D=6$, $D_{high}=12$) across active topics without partition risks.</p>
+<p>However, unlike Go's multi-threaded M:N runtime scheduler (<code>goroutines</code>), Python executes async tasks on a single-threaded cooperative event loop (<code>trio</code> / <code>anyio</code>). Initiating hundreds of concurrent connection attempts, handshakes, and cryptographic key exchanges simultaneously can overwhelm the event loop, trigger socket exhaustion (<code>EMFILE</code>), and cause high memory fragmentation.</p>
+<p>This RFC outlines our architectural strategy for <strong>dial throttling, adaptive rate limiting, smart address filtering, and connection watermark pruning</strong> to scale <code>py-ipfs-lite</code> to <strong>500+ stable, long-lived peer connections</strong> with minimal resource footprints.</p>
+<hr />
+<h2 id="2-challenges-in-async-python-p2p-networking">2. Challenges in Async Python P2P Networking</h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>                     ┌──────────────────────────────────────────────┐
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                     │          Unthrottled Dial Burst              │
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                     │  (Bootstrap / Random Walk: 400+ Targets)     │
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>                     └──────────────────────┬───────────────────────┘
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                                            │
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>                                            ▼
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>                     ┌──────────────────────────────────────────────┐
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>                     │         Single-Threaded Event Loop           │
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>                     │  - 400 TLS/Noise handshakes simultaneously   │
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>                     │  - High CPU spikes / Coroutine queue lag     │
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>                     │  - Socket descriptor exhaustion (EMFILE)     │
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>                     │  - Unreachable IPv6/relay dials timing out   │
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                     └──────────────────────┬───────────────────────┘
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>                                            │
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>                                            ▼
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>                     ┌──────────────────────────────────────────────┐
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>                     │   Result: Connection Churn &amp; Memory Spikes   │
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>                     └──────────────────────────────────────────────┘
+</span></code></pre></div>
+<p>When scaling peer counts, four major bottlenecks emerge:</p>
+<ol>
+<li>
+<p><strong>Event Loop Starvation During Crypto Handshakes:</strong>
+   Establishing a libp2p connection requires a multi-step protocol handshake:
+   <code>Transport (TCP/QUIC) -&gt; Security (Noise / TLS 1.3 with ECDSA/Ed25519) -&gt; Muxer (Yamux / Mplex) -&gt; Identify</code>.
+   Performing 100+ simultaneous cryptographic handshakes saturates the CPU, delaying task scheduling across other subsystems (Bitswap, HTTP API).</p>
+</li>
+<li>
+<p><strong>File Descriptor &amp; Memory Pressure:</strong>
+   Each half-open TCP socket consumes OS file descriptors and buffer memory. Unchecked dial floods can breach <code>ulimit -n</code> and cause memory fragmentation in glibc's arena allocator.</p>
+</li>
+<li>
+<p><strong>Dead / Unroutable Multiaddr Dials:</strong>
+   Public DHT routing tables contain many transient or unroutable multiaddresses (e.g., IPv6 addresses on hosts without public IPv6, circuit-relay addresses without active relays). Dialing these unthrottled results in long 30-second timeouts that consume concurrency slots.</p>
+</li>
+<li>
+<p><strong>Connection Churn at High Watermarks:</strong>
+   Without a graceful pruning policy, nodes oscillate between dialing new peers and aggressively disconnecting existing ones.</p>
+</li>
+</ol>
+<hr />
+<h2 id="3-proposed-architecture-solutions">3. Proposed Architecture &amp; Solutions</h2>
+<h3 id="a-sliding-window-dial-throttling-batching">A. Sliding-Window Dial Throttling &amp; Batching</h3>
+<p>Instead of spawning unbounded async tasks to dial all discovered candidates at once, <code>AutoConnector</code> uses a <strong>sliding window rate limiter</strong> backed by <code>trio.CapacityLimiter</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Discovered Peers Queue ──▶ [ Batching (ALPHA=10) ] ──▶ [ CapacityLimiter (Max In-Flight = 20) ]
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>                                                                       │
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                                                         ┌─────────────┴─────────────┐
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>                                                         ▼                           ▼
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>                                                  Dial Worker 1                Dial Worker 2 ...
+</span></code></pre></div>
+<ul>
+<li><strong>In-Flight Dial Cap:</strong> Maximum of 20 concurrent dials in progress at any instant.</li>
+<li><strong>Batch Staggering:</strong> Dials are initiated in small waves with micro-delays (e.g., 50ms–100ms) between batches to allow the event loop to interleave I/O and process active streams.</li>
+<li><strong>Per-Peer Timeout Budget:</strong> Each dial attempt is bounded by an aggressive individual timeout (<code>trio.fail_after(10.0)</code> for direct connections), preventing dead candidates from holding dial tokens.</li>
+</ul>
+<hr />
+<h3 id="b-proactive-address-filtering">B. Proactive Address Filtering</h3>
+<p>Before a dial task is scheduled, candidate multiaddrs pass through an address validation pipeline:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Address Pattern</th>
+<th style="text-align: left;">Validation Policy</th>
+<th style="text-align: left;">Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>/ip6/...</code> (Public IPv6)</td>
+<td style="text-align: left;"><strong>Filtered Out</strong> if host has no public IPv6</td>
+<td style="text-align: left;">Prevents guaranteed timeout errors on IPv4-only cloud instances (AWS EC2, Docker bridge).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/p2p-circuit/...</code></td>
+<td style="text-align: left;"><strong>Filtered Out</strong> unless circuit relay v2 transport is explicitly enabled</td>
+<td style="text-align: left;">Avoids dialing third-party relays for unconfigured nodes.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Private / Local IPs (<code>10.0.0.0/8</code>, <code>192.168.0.0/16</code>)</td>
+<td style="text-align: left;"><strong>Filtered Out</strong> in public WAN mode</td>
+<td style="text-align: left;">Protects against local subnet scans and invalid public routes.</td>
+</tr>
+<tr>
+<td style="text-align: left;">Duplicate Peer IDs</td>
+<td style="text-align: left;"><strong>Deduplicated</strong> across candidate queues</td>
+<td style="text-align: left;">Ensures we only maintain one active dial per remote peer.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="c-two-tier-watermark-connection-pruner">C. Two-Tier Watermark &amp; Connection Pruner</h3>
+<p>To maintain a healthy equilibrium between <code>300</code> and <code>500</code> peers without constant connection churn:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>0 Peers           300 Peers (Low Watermark)      500 Peers (High Watermark)      600+ Peers
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  │                          │                               │                      │
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  └──── Fast Auto-Dial ──────┴───── Normal Maintenance ──────┴───── Active Pruning ─┘
+</span></code></pre></div>
+<ol>
+<li><strong>Below Low Watermark (<code>N &lt; 300</code>):</strong></li>
+<li>AutoConnector runs in <strong>high-priority mode</strong>, triggering bootstrap lookups and K-bucket random walks to discover and connect to new peers.</li>
+<li><strong>Normal Operating Band (<code>300 &lt;= N &lt;= 500</code>):</strong></li>
+<li>Inbound and outbound connections are accepted without pruning. Background maintenance dials occur only periodically.</li>
+<li><strong>Above High Watermark (<code>N &gt; 500</code>):</strong></li>
+<li><code>ConnectionPruner</code> initiates graceful eviction. Peers are sorted using a <strong>weighted score</strong>:<ul>
+<li><strong>Protected / High Priority:</strong> Bootstrap nodes, active Bitswap transfer partners, DHT server nodes.</li>
+<li><strong>Grace Period Protection:</strong> Peers connected for less than 60 seconds are protected from early eviction to allow Identify and protocol negotiation to complete.</li>
+<li><strong>Eviction Candidates:</strong> Idle connections with 0 active streams, high round-trip latency, or unsupported protocol sets.</li>
+</ul>
+</li>
+</ol>
+<hr />
+<h3 id="d-memory-optimization-os-tuning">D. Memory Optimization &amp; OS Tuning</h3>
+<p>To prevent memory bloat over extended runtimes:
+* <strong>Glibc Arena Tuning:</strong> Configured with <code>MALLOC_ARENA_MAX=2</code> and <code>MALLOC_MMAP_THRESHOLD_=131072</code> inside container environments to prevent arena heap fragmentation.
+* <strong>Periodic Garbage Collection:</strong> Automatic invocation of <code>malloc_trim(0)</code> during periodic maintenance sweeps.
+* <strong>File Descriptors:</strong> System <code>ulimit -n</code> raised to <code>65536:65536</code> in production Docker configurations.</p>
+<hr />
+<h2 id="4-configuration-environment-variables">4. Configuration &amp; Environment Variables</h2>
+<p>The following parameters are exposed to configure connection scaling in <code>py-ipfs-lite</code>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Environment Variable</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Recommended (500+ Peers)</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>IPFS_LITE_CONN_MGR_LOW_WATER</code></td>
+<td style="text-align: left;"><code>100</code></td>
+<td style="text-align: left;"><code>300</code></td>
+<td style="text-align: left;">Minimum active peer threshold before auto-connector initiates dials.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>IPFS_LITE_CONN_MGR_HIGH_WATER</code></td>
+<td style="text-align: left;"><code>200</code></td>
+<td style="text-align: left;"><code>500</code></td>
+<td style="text-align: left;">Maximum active peer cap before connection pruner triggers evictions.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>IPFS_LITE_MAX_INBOUND_STREAMS</code></td>
+<td style="text-align: left;"><code>250</code></td>
+<td style="text-align: left;"><code>550</code></td>
+<td style="text-align: left;">Inbound stream capacity limiter token count.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>IPFS_LITE_DIAL_TIMEOUT</code></td>
+<td style="text-align: left;"><code>15</code></td>
+<td style="text-align: left;"><code>10</code></td>
+<td style="text-align: left;">Timeout in seconds for individual peer dial attempts.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>IPFS_LITE_ENABLE_QUIC</code></td>
+<td style="text-align: left;"><code>true</code></td>
+<td style="text-align: left;"><code>true</code></td>
+<td style="text-align: left;">Enables QUIC transport (reduces TLS handshake round trips to 1-RTT/0-RTT).</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-observability-telemetry">5. Observability &amp; Telemetry</h2>
+<p>To verify swarm stability in production, <code>py-ipfs-lite</code> exposes both Prometheus metric endpoints and JSON diagnostics endpoints:</p>
+<h3 id="a-prometheus-metrics-get-metrics-or-get-debugmetricsprometheus">A. Prometheus Metrics (<code>GET /metrics</code> or <code>GET /debug/metrics/prometheus</code>)</h3>
+<ul>
+<li><strong>Swarm &amp; Connection Totals:</strong></li>
+<li><code>ipfs_swarm_peers</code>: Current count of unique connected peers.</li>
+<li><code>ipfs_swarm_connections_total</code>: Total raw connections active across all transports.</li>
+<li><code>ipfs_swarm_connections{transport, direction}</code>: Directional breakdown (<code>tcp</code>, <code>quic-v1</code>, <code>ws</code> $\times$ <code>inbound</code>, <code>outbound</code>, <code>all</code>).</li>
+<li><strong>Connection Longevity &amp; Age Tiers:</strong></li>
+<li><code>ipfs_swarm_peers_by_age{age_bucket}</code>: Distribution across duration tiers (<code>under_2m</code>, <code>2m_to_5m</code>, <code>5m_to_10m</code>, <code>10m_to_30m</code>, <code>over_30m</code>).</li>
+<li><code>ipfs_swarm_peers_connected_over_5m</code>, <code>ipfs_swarm_peers_connected_over_10m</code>, <code>ipfs_swarm_peers_connected_over_30m</code>: Longevity gauges.</li>
+<li><strong>Lifecycle &amp; Disconnect Analysis:</strong></li>
+<li><code>ipfs_swarm_connects_total{transport}</code> / <code>ipfs_swarm_disconnects_total{transport}</code>: Lifetime event counters.</li>
+<li><code>ipfs_swarm_disconnect_reasons_total{reason_hint}</code>: Classified disconnect causes (<code>remote_closed_or_idle</code>, <code>handshake_failed_or_dial_cancelled</code>, <code>idle_timeout</code>).</li>
+<li><strong>Auto-Connector &amp; Dial Pipeline:</strong></li>
+<li><code>ipfs_autoconnector_state{metric}</code>: Live gauges for <code>low_watermark</code>, <code>high_watermark</code>, <code>min_connections</code>, <code>max_connections</code>, and <code>in_flight_dials</code>.</li>
+<li><strong>Multiplexed Streams &amp; Leak Detection:</strong></li>
+<li><code>ipfs_streams_active{protocol}</code>: Live open streams by protocol (<code>/ipfs/kad/1.0.0</code>, <code>/ipfs/bitswap/1.2.0</code>, <code>/ipfs/id/1.0.0</code>, <code>/ipfs/id/push/1.0.0</code>, <code>/ipfs/ping/1.0.0</code>).</li>
+<li><code>ipfs_streams_by_protocol_total{direction, protocol}</code>: Cumulative opened streams.</li>
+<li><code>ipfs_streams_leaked_total</code>: Watchdog counter for streams exceeding max lifetime thresholds.</li>
+<li><strong>Process &amp; Host Health:</strong></li>
+<li><code>ipfs_process_memory_rss_bytes</code>, <code>ipfs_process_cpu_percent</code>, <code>ipfs_process_open_fds</code>, <code>ipfs_process_uptime_seconds</code>.</li>
+</ul>
+<h3 id="b-http-swarm-diagnostics-endpoints">B. HTTP Swarm &amp; Diagnostics Endpoints</h3>
+<ul>
+<li><code>GET /api/v0/swarm/peers</code>: Lists all connected peers with latency, multiaddrs, age tiers, and stream counts (<code>{"count": N, "peers": [...]}</code>).</li>
+<li><code>GET /api/v0/swarm/connection_stats</code>: Detailed connection tracker records, identify status, and connection duration for every peer.</li>
+<li><code>GET /api/v0/swarm/stream_stats</code>: Real-time stream leak monitor reporting active, closed, and suspected leaked streams.</li>
+<li><code>GET /api/v0/swarm/connection_metrics</code> (or <code>GET /api/v0/debug/connection-stats</code>): Summary metrics including total connected/disconnected events and recent disconnect logs.</li>
+<li><code>GET /debug/conns</code>: Fast total raw connection counter (<code>{"total_connections": N}</code>).</li>
+<li><code>GET /api/v0/debug/memory</code>: Process memory footprint, RSS before/after <code>malloc_trim(0)</code>, and active Trio coroutine introspections.</li>
+<li><code>GET /api/v0/debug/peerstore</code> &amp; <code>GET /api/v0/debug/routing_table</code>: Real-time size and peer ID inventory for PeerStore and Kademlia Routing Table.</li>
+</ul>
+<hr />
+<h2 id="6-feedback-community-questions">6. Feedback &amp; Community Questions</h2>
+<p>We would love feedback from developers and node operators on the following points:</p>
+<ol>
+<li><strong>Peer Eviction Heuristics:</strong> What additional scoring criteria (e.g., latency, past Bitswap transfer volume, DHT server status) should we incorporate into the connection pruner?</li>
+<li><strong>Transport Preference:</strong> When a peer advertises both TCP and QUIC-v1, should QUIC always be preferred to reduce handshake latency and socket overhead?</li>
+<li><strong>Dial Concurrency:</strong> What dial concurrency limits have worked best in your deployment environments (cloud VMs vs. resource-constrained edge devices)?</li>
+</ol>
+<hr />
+<p><em>Please share your thoughts, benchmark results, and suggestions below!</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

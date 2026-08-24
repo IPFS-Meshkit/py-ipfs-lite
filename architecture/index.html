@@ -1,0 +1,2116 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Embeddable lightweight IPFS peer for Python">
+      
+      
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../comparison/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Architecture - py-ipfs-lite</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="py-ipfs-lite" class="md-header__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            py-ipfs-lite
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../comparison/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Comparison
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tutorials/01-your-first-peer/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/ai-agents-and-rag/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="py-ipfs-lite" class="md-nav__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    py-ipfs-lite
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-component-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Component Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-adapter-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Adapter Pattern
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-data-flow-adding-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Data Flow: Adding a File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-data-flow-fetching-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Data Flow: Fetching Content
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-concurrency-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Concurrency Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Concurrency Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-rwlock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The RWLock
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-get_file-cancel-scope-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The get_file cancel-scope fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#background-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background tasks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-the-ipns-trust-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. The IPNS Trust Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. The IPNS Trust Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-verified-on-resolve_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is verified on resolve_name()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is NOT verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-where-py-libp2p-ends-and-py-ipfs-lite-begins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Where py-libp2p Ends and py-ipfs-lite Begins
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-peer-api-package-internals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Peer &amp; API package internals
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Peer &amp; API package internals">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-py_ipfs_litepeer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 py_ipfs_lite/peer/
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-py_ipfs_liteapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 py_ipfs_lite/api/
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/01-your-first-peer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 01: Your First Peer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/02-running-a-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 02: Running a Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ai-agents-and-rag/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Agents and RAG with py-ipfs-lite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/car-files-and-filecoin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CAR Files and Filecoin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/dht-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DHT and Routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/http-api-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/interop-with-kubo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interoperability with Kubo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ipns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPNS — Mutable Names over Immutable CIDs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/persistence-and-gc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence and Garbage Collection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/production-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/streaming-large-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Large Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/examples-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/python-sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-component-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Component Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-adapter-pattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Adapter Pattern
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-data-flow-adding-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Data Flow: Adding a File
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-data-flow-fetching-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Data Flow: Fetching Content
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-concurrency-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Concurrency Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Concurrency Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-rwlock" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The RWLock
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-get_file-cancel-scope-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The get_file cancel-scope fix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#background-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background tasks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-the-ipns-trust-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. The IPNS Trust Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. The IPNS Trust Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-verified-on-resolve_name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is verified on resolve_name()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is NOT verified
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-where-py-libp2p-ends-and-py-ipfs-lite-begins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Where py-libp2p Ends and py-ipfs-lite Begins
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-peer-api-package-internals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Peer &amp; API package internals
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Peer &amp; API package internals">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-py_ipfs_litepeer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 py_ipfs_lite/peer/
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-py_ipfs_liteapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 py_ipfs_lite/api/
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture</h1>
+<p>This document describes how <code>py-ipfs-lite</code> is structured internally: what the components are,
+how they relate to each other, and why certain design decisions were made. It is the right
+starting point if you want to contribute, swap out a subsystem, or just understand what is
+happening under the hood when you call <code>peer.add_file()</code>.</p>
+<hr />
+<h2 id="1-component-overview">1. Component Overview</h2>
+<p>The central object in <code>py-ipfs-lite</code> is the <code>Peer</code> class, defined in the
+<a href="../py_ipfs_lite/peer/"><code>py_ipfs_lite/peer/</code></a> package (see
+<a href="#7-peer-package-internals">Peer internals</a>). It is the public API surface — everything
+a user or embedding application interacts with goes through <code>Peer</code>.</p>
+<p><code>Peer</code> orchestrates <strong>five subsystems</strong>, each defined as a <code>Protocol</code> interface in
+<a href="../py_ipfs_lite/interfaces.py"><code>py_ipfs_lite/interfaces.py</code></a>:</p>
+<table>
+<thead>
+<tr>
+<th>Interface</th>
+<th>Responsibility</th>
+<th>Default implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Host</code></td>
+<td>libp2p network layer: identity, connections, streams</td>
+<td><code>HostAdapter</code> wrapping py-libp2p's <code>BasicHost</code></td>
+</tr>
+<tr>
+<td><code>Routing</code></td>
+<td>Content discovery and DHT / IPNI interaction</td>
+<td><code>TieredRouting</code> ([DHT + IPNI]) or bare <code>RoutingAdapter</code></td>
+</tr>
+<tr>
+<td><code>BlockStore</code></td>
+<td>Persistent or in-memory raw block storage</td>
+<td><code>BlockStoreAdapter</code> wrapping <code>FilesystemBlockStore</code> or <code>MemoryBlockStore</code></td>
+</tr>
+<tr>
+<td><code>Exchange</code></td>
+<td>Bitswap: fetching blocks from remote peers</td>
+<td><code>ExchangeAdapter</code> wrapping py-libp2p's <code>BitswapClient</code></td>
+</tr>
+<tr>
+<td><code>DagService</code></td>
+<td>DAG construction and traversal</td>
+<td>py-libp2p's <code>MerkleDag</code></td>
+</tr>
+</tbody>
+</table>
+<p>Additionally, two service objects run alongside <code>Peer</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Object</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PinStore</code></td>
+<td>Tracks pinned CIDs; controls what GC is allowed to delete</td>
+</tr>
+<tr>
+<td><code>Reprovider</code></td>
+<td>Background task that periodically re-announces all local blocks to the DHT</td>
+</tr>
+</tbody>
+</table>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────────────────────────────────────────────────────┐
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│                         Peer                             │
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│                                                          │
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ┌──────────┐  ┌──────────┐  ┌───────────┐             │
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   │   Host   │  │ Routing  │  │BlockStore │             │
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   │ Adapter  │  │(Tiered)  │  │ Adapter   │             │
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   └────┬─────┘  └────┬─────┘  └─────┬─────┘            │
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│        │             │              │                    │
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ┌────┴─────┐  ┌────┴──────┐  ┌───┴──────────┐        │
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   │py-libp2p │  │ KadDHT +  │  │ MetricsBlock │        │
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   │BasicHost │  │DelegatedH │  │ Store + FS / │        │
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   │(Noise)   │  │TTPRouting │  │ Memory store │        │
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│   └──────────┘  └───────────┘  └──────────────┘        │
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│                                                          │
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   ┌──────────────────┐   ┌─────────────────┐            │
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   │ ExchangeAdapter  │   │   DagService    │            │
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   │  (BitswapClient) │   │  (MerkleDag)   │            │
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   └──────────────────┘   └─────────────────┘            │
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│                                                          │
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   ┌──────────┐   ┌────────────┐   ┌──────────────────┐  │
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   │PinStore  │   │Reprovider  │   │  RWLock (GC)     │  │
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   └──────────┘   └────────────┘   └──────────────────┘  │
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>└──────────────────────────────────────────────────────────┘
+</span></code></pre></div>
+<hr />
+<h2 id="2-the-adapter-pattern">2. The Adapter Pattern</h2>
+<p><code>py-ipfs-lite</code> defines its five core interfaces as Python <code>Protocol</code> classes. This is an explicit
+design seam between <code>py-ipfs-lite</code>'s own API and the concrete types provided by <code>py-libp2p</code>.</p>
+<p>The reason this matters: py-libp2p uses slightly different method names from what
+<code>py-ipfs-lite</code> expects. For example:</p>
+<ul>
+<li>py-libp2p's <code>BasicHost</code> exposes <code>.get_id()</code> and <code>.get_addrs()</code></li>
+<li><code>py-ipfs-lite</code>'s <code>Host</code> interface expects <code>.id()</code> and <code>.addrs()</code></li>
+<li>py-libp2p's blockstore exposes <code>.put_block()</code> / <code>.get_block()</code></li>
+<li><code>py-ipfs-lite</code>'s <code>BlockStore</code> interface expects <code>.put()</code> / <code>.get()</code></li>
+</ul>
+<p>Rather than forking py-libp2p or patching it, <code>py-ipfs-lite</code> uses three <strong>adapter classes</strong>
+in <code>interfaces.py</code> to bridge the gap:</p>
+<table>
+<thead>
+<tr>
+<th>Adapter</th>
+<th>Wraps</th>
+<th>Translates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HostAdapter</code></td>
+<td><code>BasicHost</code></td>
+<td><code>get_id()</code> → <code>id()</code>, <code>get_addrs()</code> → <code>addrs()</code>, <code>new_stream()</code> → <code>open_stream()</code></td>
+</tr>
+<tr>
+<td><code>BlockStoreAdapter</code></td>
+<td><code>MemoryBlockStore</code> or <code>FilesystemBlockStore</code></td>
+<td><code>put_block()</code> → <code>put()</code>, <code>get_block()</code> → <code>get()</code>, etc.</td>
+</tr>
+<tr>
+<td><code>RoutingAdapter</code></td>
+<td><code>KadDHT</code></td>
+<td>Wraps DHT calls and instruments them with Prometheus timing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What this buys you:</strong> You can swap out any subsystem by providing a different implementation
+that satisfies the <code>Protocol</code> interface, without changing <code>Peer</code>. For example:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Bring your own blockstore</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">py_ipfs_lite.interfaces</span><span class="w"> </span><span class="kn">import</span> <span class="n">BlockStore</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">RedisBlockStore</span><span class="p">:</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cid</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cid</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="c1"># ... etc</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">peer</span> <span class="o">=</span> <span class="n">Peer</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">blockstore</span><span class="o">=</span><span class="n">RedisBlockStore</span><span class="p">())</span>
+</span></code></pre></div>
+<p>All five interfaces (<code>Host</code>, <code>Routing</code>, <code>BlockStore</code>, <code>Exchange</code>, <code>DagService</code>) are injectable
+through <code>Peer.__init__</code>. Only those left as <code>None</code> will be auto-constructed during <code>peer.start()</code>.</p>
+<hr />
+<h2 id="3-data-flow-adding-a-file">3. Data Flow: Adding a File</h2>
+<p>When you call <code>await peer.add_file("/path/to/file.txt")</code>, the following sequence occurs:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>add_file(path)
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    │
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    ├── Acquire RWLock (read lock) ──────────────────────────────────────┐
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    │   (allows concurrent adds; blocks only if GC is running)           │
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    │                                                                    │
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    ├── dag_service.add_file(path)                                       │
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    │       │                                                            │
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    │       ├── MerkleDag reads file from disk (synchronous I/O)        │
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    │       ├── Chunks file into blocks (default: 262144 bytes/chunk)   │
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    │       ├── Constructs UnixFS DAG-PB nodes for each chunk           │
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    │       ├── Computes CIDv1 for each block                           │
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    │       └── Writes each block to BlockStore via Exchange.notify()   │
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    │                                                                    │
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    ├── Release RWLock ───────────────────────────────────────────────────┘
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    │
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    ├── Format root CID as a base32 CIDv1 string
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    │
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    └── routing.provide(cid_str)
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>            │
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>            ├── TieredRouting fans out to:
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>            │       ├── DelegatedHTTPRouting.provide()
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>            │       │     └── HTTP PUT /routing/v1/providers/{cid} → cid.contact (IPIP-337)
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>            │       └── RoutingAdapter.provide()
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>            │             └── KadDHT.provide() → announces to DHT peers
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>            │
+</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>            └── Returns CID string to caller
+</span></code></pre></div>
+<blockquote>
+<p><strong>Honest caveat:</strong> <code>MerkleDag.add_file()</code> in py-libp2p performs a blocking <code>open(path, "rb").read()</code>
+with no <code>await</code> checkpoint inside the chunking/hashing loop. Because Trio uses cooperative
+concurrency, CPU-bound work with no yield points cannot actually interleave with other tasks
+regardless of how fine-grained the <code>RWLock</code> is. The <code>RWLock</code> correctly guarantees
+<strong>safety</strong> (no concurrent GC corruption), but <strong>throughput</strong> for concurrent large-file
+ingestion is limited by this upstream behaviour. See the
+<a href="../guides/observability/">Observability guide</a> for a concrete benchmark.</p>
+</blockquote>
+<hr />
+<h2 id="4-data-flow-fetching-content">4. Data Flow: Fetching Content</h2>
+<p>When you call <code>await peer.get_file(cid_str)</code>, the sequence is:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>get_file(cid_str)
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    │
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    ├── If provider_addr provided: host.connect(provider_addr) directly
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    │
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    ├── Else if routing is available:
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    │       └── routing.find_providers(cid_str)
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    │               ├── TieredRouting queries IPNI first (HTTP GET /routing/v1/providers/{cid})
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    │               └── Falls back to KadDHT.find_providers()
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    │           For each provider found: host.connect(provider)
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    │
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    ├── parse_cid(cid_str)  →  raw CID bytes
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    │
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    └── fetch_stream(cid) [async generator]
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>            │
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>            ├── fetch_block_with_timeout(cid)
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>            │       └── exchange.get_block(cid)
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>            │               └── BitswapClient sends WANT message to connected peers
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>            │                   Receives block data back via Bitswap protocol
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>            │
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>            ├── Detect codec from CID prefix (dag-pb, dag-json, dag-cbor, raw)
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>            │
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>            ├── If dag-pb (UnixFS):
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>            │       ├── decode_dag_pb(data) → links + UnixFS data
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>            │       ├── If directory: recurse into first link
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>            │       └── If chunked file: yield each chunk's data in order
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>            │
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>            └── If raw / other codec: yield data directly
+</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>
+</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>        stream=False (default): buffer all chunks → return bytes
+</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>        stream=True:            return the async generator directly
+</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a>        output_path provided:   write chunks to file, return None
+</span></code></pre></div>
+<hr />
+<h2 id="5-concurrency-model">5. Concurrency Model</h2>
+<p><code>py-ipfs-lite</code> uses <a href="https://trio.readthedocs.io/">Trio</a> as its async runtime. This is a
+deliberate choice inherited from py-libp2p — Trio's structured concurrency model and
+cancellation semantics are a better fit for a networked peer than <code>asyncio</code>.</p>
+<h3 id="the-rwlock">The RWLock</h3>
+<p>The critical invariant for GC correctness is: <strong>a block must not be deleted while it is
+being written</strong>. The original implementation used a single <code>trio.Lock</code>, which serialized
+all <code>add_file</code>, <code>add_node</code>, and <code>gc()</code> calls.</p>
+<p>The current implementation uses a custom <code>RWLock</code> (reader-writer lock) defined in <code>peer/ipld.py</code>:</p>
+<ul>
+<li><strong>Read lock</strong> (<code>async with self._gc_lock.read_lock()</code>): taken by <code>add_file()</code> and <code>add_node()</code>.
+  Multiple read locks can be held simultaneously — concurrent ingestion tasks do not block
+  each other.</li>
+<li><strong>Write lock</strong> (<code>async with self._gc_lock.write_lock()</code>): taken exclusively by <code>gc()</code>.
+  The write lock waits until all active readers have finished, then blocks new readers from
+  starting until GC is complete.</li>
+</ul>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Multiple adds can run concurrently</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gc_lock</span><span class="o">.</span><span class="n">read_lock</span><span class="p">():</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">blockstore</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">cid</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># GC gets exclusive access — waits for all readers first</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="k">async</span> <span class="k">with</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gc_lock</span><span class="o">.</span><span class="n">write_lock</span><span class="p">():</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">to_delete</span> <span class="o">=</span> <span class="n">all_cids</span> <span class="o">-</span> <span class="n">reachable_cids</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="k">for</span> <span class="n">cid</span> <span class="ow">in</span> <span class="n">to_delete</span><span class="p">:</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">blockstore</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">cid</span><span class="p">)</span>
+</span></code></pre></div>
+<h3 id="the-get_file-cancel-scope-fix">The <code>get_file</code> cancel-scope fix</h3>
+<p>Trio requires that <code>trio.fail_after()</code> cancel scopes must not span an <code>async for</code> yield
+boundary inside an async generator. The original implementation violated this, causing
+nursery corruption under timeout. The fix isolates the cancel scope:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># cancel scope opens and FULLY CLOSES before the yield</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch_block_with_timeout</span><span class="p">(</span><span class="n">current_cid</span><span class="p">):</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="k">with</span> <span class="n">trio</span><span class="o">.</span><span class="n">fail_after</span><span class="p">(</span><span class="n">t_val</span><span class="p">):</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        <span class="k">return</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exchange</span><span class="o">.</span><span class="n">get_block</span><span class="p">(</span><span class="n">current_cid</span><span class="p">)</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">fetch_stream</span><span class="p">(</span><span class="n">current_cid</span><span class="p">):</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">data</span> <span class="o">=</span> <span class="k">await</span> <span class="n">fetch_block_with_timeout</span><span class="p">(</span><span class="n">current_cid</span><span class="p">)</span>  <span class="c1"># scope is gone by here</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="o">...</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="k">yield</span> <span class="n">data</span>  <span class="c1"># safe: no cancel scope is open across this yield</span>
+</span></code></pre></div>
+<h3 id="background-tasks">Background tasks</h3>
+<p><code>peer.start()</code> opens a <code>trio.Nursery</code> and starts two long-running background tasks:</p>
+<ul>
+<li><code>reprovider.start()</code> — loops every <code>reprovide_interval_seconds</code> (default: 43200s / 12h),
+  re-announcing all pinned blocks to the DHT and IPNI.</li>
+<li><code>_periodic_pruner_task()</code> — triggers <code>ConnectionPruner.maybe_prune_connections()</code> every 15
+  seconds to enforce the <code>conn_mgr_high_water</code> / <code>conn_mgr_low_water</code> connection limits.</li>
+</ul>
+<hr />
+<h2 id="6-the-ipns-trust-model">6. The IPNS Trust Model</h2>
+<p>IPNS (InterPlanetary Name System) maps a <code>PeerID</code> (a stable identifier) to a mutable value
+(typically an IPFS CID path like <code>/ipfs/bafy...</code>). Records are stored in the DHT and signed
+by the publisher's private key.</p>
+<h3 id="what-is-verified-on-resolve_name">What is verified on <code>resolve_name()</code></h3>
+<p>When <code>peer.resolve_name(peer_id_str)</code> is called, <code>py-ipfs-lite</code> runs a full cryptographic
+validation chain in <code>validate_ipns_record()</code> (in <code>py_ipfs_lite/ipns.py</code>):</p>
+<ol>
+<li>
+<p><strong>Public key verification:</strong> The public key embedded in the record must hash to exactly
+   the expected <code>PeerID</code>. A record signed by any other key — even a structurally valid one —
+   is rejected with <code>RoutingError("IPNS record pubKey does not match the expected Peer ID")</code>.</p>
+</li>
+<li>
+<p><strong>Signature verification (V2 preferred):</strong> If the record contains a V2 signature (the
+   current standard), the signed CBOR payload must match both the declared <code>value</code> and
+   <code>validity</code> fields byte-for-byte. This prevents a partial-substitution forgery attack.
+   V1 (legacy) signature verification is also supported as fallback.</p>
+</li>
+<li>
+<p><strong>Expiry verification:</strong> The <code>validity</code> field is a RFC-3339 timestamp. If the current
+   UTC time is past this timestamp, the record is rejected with
+   <code>RoutingError("IPNS record has expired")</code>.</p>
+</li>
+</ol>
+<h3 id="what-is-not-verified">What is NOT verified</h3>
+<ul>
+<li>
+<p><strong>IPNI announce-side trust:</strong> When a peer calls <code>routing.provide(cid)</code>, the IPNI indexer
+  (<code>cid.contact</code>) accepts the announcement without verifying that the announcing peer actually
+  has the content. This is a property of the IPNI protocol, not a py-ipfs-lite limitation.
+  Do not treat an IPNI provider result as a guarantee of content availability.</p>
+</li>
+<li>
+<p><strong>DHT peer identity for IPNS records:</strong> The DHT guarantees that a record stored at key
+  <code>/ipns/{peerID}</code> was PUT by some peer, but does not guarantee <em>which</em> peer. The
+  <code>validate_ipns_record()</code> signature check is what closes this gap — a forged record PUT
+  into the DHT by a malicious peer will be rejected at validation time.</p>
+</li>
+</ul>
+<hr />
+<h2 id="7-where-py-libp2p-ends-and-py-ipfs-lite-begins">7. Where py-libp2p Ends and py-ipfs-lite Begins</h2>
+<p>Understanding the boundary helps contributors decide where a fix belongs.</p>
+<p><strong>py-libp2p's responsibility (do not change here):</strong></p>
+<ul>
+<li>TCP/QUIC transport</li>
+<li>Noise handshake and channel encryption</li>
+<li>Yamux stream multiplexing</li>
+<li>KadDHT implementation</li>
+<li>Bitswap protocol (WANT/HAVE/BLOCK message exchange)</li>
+<li><code>MerkleDag.add_file()</code> chunking and UnixFS DAG construction</li>
+<li><code>MemoryBlockStore</code> and <code>FilesystemBlockStore</code></li>
+</ul>
+<p><strong>py-ipfs-lite's responsibility:</strong></p>
+<ul>
+<li>The <code>Peer</code> orchestrator and its lifecycle (<code>start()</code>, <code>close()</code>)</li>
+<li>The adapter layer (<code>HostAdapter</code>, <code>BlockStoreAdapter</code>, <code>RoutingAdapter</code>)</li>
+<li>The <code>TieredRouting</code> and <code>DelegatedHTTPRouting</code> for IPNI (IPIP-337)</li>
+<li>The <code>RWLock</code> concurrency model for GC safety</li>
+<li>The <code>PinStore</code> and GC logic (mark-and-sweep over the blockstore)</li>
+<li>The IPNS publish/resolve/validate logic (including V2 cryptographic verification)</li>
+<li>The CAR v1 export/import with async I/O (<code>trio.open_file</code>)</li>
+<li>The Prometheus metrics instrumentation layer (<code>MetricsBlockStore</code>, <code>RoutingAdapter</code>)</li>
+<li>The HTTP API (<code>api/</code> package) and CLI (<code>cli.py</code>)</li>
+</ul>
+<p>If a bug is in the Bitswap wire protocol, it belongs in py-libp2p. If a bug is in how
+blocks are pinned, GC'd, announced, or served over HTTP, it belongs here.</p>
+<blockquote>
+<p><strong>Note on upstream contributions:</strong> The Bitswap improvements for Kubo compatibility
+(including dag-pb/cbor/json codec negotiation) were developed as part of this project and
+merged into the canonical <code>libp2p/py-libp2p</code> repository via
+<a href="https://github.com/libp2p/py-libp2p/pull/1321">PR #1321</a>. This means the interoperability
+work is now part of the reference Python libp2p implementation.</p>
+</blockquote>
+<h2 id="7-peer-api-package-internals">7. Peer &amp; API package internals</h2>
+<p>As of the 2026-08 modularisation, both formerly monolithic modules are packages.</p>
+<h3 id="71-py_ipfs_litepeer">7.1 <code>py_ipfs_lite/peer/</code></h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>core.py</code></td>
+<td><code>Peer</code> facade composing the mixins; shared attribute surface</td>
+</tr>
+<tr>
+<td><code>_hostfactory.py</code></td>
+<td>Construction of host / DHT / blockstore / exchange / DAG service</td>
+</tr>
+<tr>
+<td><code>_lifecycle.py</code></td>
+<td><code>start()</code>, <code>close()</code>, <code>bootstrap()</code>, routing-table warm-up</td>
+</tr>
+<tr>
+<td><code>_maintenance.py</code></td>
+<td>Keep-alive ping loop, connection pruner, stream-leak monitor</td>
+</tr>
+<tr>
+<td><code>_pubsub.py</code></td>
+<td>GossipSub init, adaptive topic discovery, subscribe/publish</td>
+</tr>
+<tr>
+<td><code>_content.py</code></td>
+<td>Files (<code>add_file</code>/<code>get_file</code>), DAG nodes, pins, GC, sessions</td>
+</tr>
+<tr>
+<td><code>_naming.py</code></td>
+<td>IPNS publish/resolve, CAR import/export</td>
+</tr>
+<tr>
+<td><code>ipld.py</code></td>
+<td><code>IPLDNode</code>, codec helpers, <code>PeerSession</code>, <code>RWLock</code>, <code>GCResult</code></td>
+</tr>
+<tr>
+<td><code>setup.py</code></td>
+<td>libp2p bootstrap helpers, metrics attachment</td>
+</tr>
+<tr>
+<td><code>state.py</code></td>
+<td><code>PeerState</code> enum</td>
+</tr>
+</tbody>
+</table>
+<h3 id="72-py_ipfs_liteapi">7.2 <code>py_ipfs_lite/api/</code></h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Routes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>main.py</code></td>
+<td>App factory, lifespan, exception handlers</td>
+</tr>
+<tr>
+<td><code>routers/content.py</code></td>
+<td><code>/add</code>, <code>/cat</code>, <code>/ls</code></td>
+</tr>
+<tr>
+<td><code>routers/blocks.py</code></td>
+<td><code>/block/*</code></td>
+</tr>
+<tr>
+<td><code>routers/dag.py</code></td>
+<td><code>/dag/*</code>, <code>/refs</code></td>
+</tr>
+<tr>
+<td><code>routers/pins.py</code></td>
+<td><code>/pin/*</code></td>
+</tr>
+<tr>
+<td><code>routers/repo.py</code></td>
+<td><code>/repo/*</code>, <code>/refs/local</code></td>
+</tr>
+<tr>
+<td><code>routers/node.py</code></td>
+<td><code>/id</code>, <code>/version</code></td>
+</tr>
+<tr>
+<td><code>routers/swarm.py</code></td>
+<td><code>/swarm/*</code> incl. tags/protection</td>
+</tr>
+<tr>
+<td><code>routers/naming.py</code></td>
+<td><code>/name/*</code></td>
+</tr>
+<tr>
+<td><code>routers/pubsub.py</code></td>
+<td><code>/pubsub/*</code></td>
+</tr>
+<tr>
+<td><code>routers/dht.py</code></td>
+<td><code>/dht/provide</code></td>
+</tr>
+<tr>
+<td><code>routers/ops.py</code></td>
+<td>metrics + debug endpoints</td>
+</tr>
+</tbody>
+</table>
+<p>Both packages keep their previous import paths working:
+<code>from py_ipfs_lite.peer import Peer</code> and <code>from py_ipfs_lite.api import app</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

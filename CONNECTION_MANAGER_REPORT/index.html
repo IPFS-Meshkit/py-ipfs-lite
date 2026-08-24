@@ -1,0 +1,1687 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Embeddable lightweight IPFS peer for Python">
+      
+      
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Connection Manager — Deep-Dive Audit Report - py-ipfs-lite</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#connection-manager-deep-dive-audit-report" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="py-ipfs-lite" class="md-header__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            py-ipfs-lite
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Connection Manager — Deep-Dive Audit Report
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../comparison/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Comparison
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tutorials/01-your-first-peer/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guides/ai-agents-and-rag/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="py-ipfs-lite" class="md-nav__button md-logo" aria-label="py-ipfs-lite" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    py-ipfs-lite
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/IPFS-Meshkit/py-ipfs-lite" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    IPFS-Meshkit/py-ipfs-lite
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/01-your-first-peer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 01: Your First Peer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/02-running-a-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial 02: Running a Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ai-agents-and-rag/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AI Agents and RAG with py-ipfs-lite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/car-files-and-filecoin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CAR Files and Filecoin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/dht-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DHT and Routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/http-api-daemon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Daemon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/interop-with-kubo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interoperability with Kubo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ipns/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IPNS — Mutable Names over Immutable CIDs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/persistence-and-gc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Persistence and Garbage Collection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/production-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/streaming-large-files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Large Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/examples-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/http-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/python-sdk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-how-the-connection-manager-works-mental-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. How the connection manager works (mental model)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. How the connection manager works (mental model)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-what-the-manager-does-not-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 What the manager does NOT do
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-q2-why-cant-the-node-reach-even-the-low-water-400" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Q2: Why can't the node reach even the low water (400)?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Q2: Why can&#39;t the node reach even the low water (400)?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-live-evidence-taken-1500-utc-55-h-uptime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Live evidence (taken 15:00 UTC, ~5.5 h uptime)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-the-churn-math" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 The churn math
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-root-causes-in-order-of-impact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Root causes (in order of impact)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-q3-why-are-connections-older-than-30-min-nearly-zero" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Q3: Why are connections older than 30 min nearly zero?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-py-libp2p-connmgr-vs-go-libp2p-connmgr-complete-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. py-libp2p connmgr vs go-libp2p connmgr — complete comparison
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. py-libp2p connmgr vs go-libp2p connmgr — complete comparison">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-what-is-genuinely-missing-in-py-libp2ps-connmgr-vs-go-libp2p" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 What is genuinely missing in py-libp2p's connmgr vs go-libp2p
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-recommended-fixes-prioritized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Recommended fixes (prioritized)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="connection-manager-deep-dive-audit-report">Connection Manager — Deep-Dive Audit Report</h1>
+<blockquote>
+<p><strong>⚠️ Historical document.</strong> Line numbers below refer to the pre-2026-08
+monolithic <code>peer.py</code> layout; the module has since been split into the
+<code>py_ipfs_lite/peer/</code> package. The <code>IPFS_LITE_CONN_MGR_INBOUND_SLOTS</code>
+"never read" finding on this page was fixed in commit <code>f6c11c07</code>.</p>
+</blockquote>
+<p><strong>Date:</strong> 2026-08-19 · <strong>Node:</strong> <code>py-ipfs-lite-dev</code> container <code>ipfs-node</code> (rebooted 09:31 UTC)
+<strong>Config (env):</strong> <code>IPFS_LITE_CONN_MGR_LOW_WATER=400</code>, <code>HIGH_WATER=600</code>
+<strong>Code:</strong> py-libp2p (sibling repo <code>/Users/sumanjeet/code/py-libp2p</code>) + <code>py_ipfs_lite</code>
+<strong>Reference:</strong> <code>go-libp2p/p2p/net/connmgr/connmgr.go</code> (incl. braidpool fork's AutoConnect)</p>
+<hr />
+<h2 id="1-how-the-connection-manager-works-mental-model">1. How the connection manager works (mental model)</h2>
+<h3 id="11-components">1.1 Components</h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>                 ┌────────────────────────────────────────────────────┐
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>   DHT / bitswap │  libp2p Network (Swarm)                            │
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>   streams       │                                                    │
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>        │        │  connections: dict[PeerID → list[SwarmConn]]       │
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        ▼        │                                                    │
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  SwarmConn ─────┴── add_conn() ──► ConnectionPruner.maybe_prune()    │
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  (muxed QUIC/                                                         │
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>   TCP conn)     │  AutoConnector (background loop)                    │
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>                 │    │                                                │
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>                 │    │ every 10s (critical) / 30s (normal)            │
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>                 │    ▼                                                │
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>                 │  count &lt; target = (400+600)/2 = 500 ?               │
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                 │    └─► pick candidates from peerstore               │
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>                 │        └─► dial up to 16/32 per cycle (50ms stagger)│
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>                 │                                                      │
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>                 │  notify_disconnected() ──► record_disconnect(60s    │
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>                 │                              backoff) + schedule    │
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>                 │                              maybe_connect (λ5s)    │
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>                 └────────────────────────────────────────────────────┘
+</span></code></pre></div>
+<p><strong>Swarm</strong> owns the connection table (<code>swarm.py:435</code> <code>get_connections()</code>). A <code>SwarmConn</code>
+wraps the muxed connection with <code>_created_at</code>, <code>event_closed</code>, <code>streams</code>, direction.</p>
+<p><strong>ConnectionPruner</strong> (<code>libp2p/network/connection_pruner.py</code>) is the <em>high-water side</em>:
+- Trigger: every <code>add_conn()</code> (<code>maybe_prune_connections</code>, <code>swarm.py:2333</code>) — <strong>but only acts when <code>conns &gt; high_watermark</code></strong> (line 239).
+- Sorts connections: temp-flag → tag score (lowest first) → stream count → direction → age; skips grace-period (&lt; 20 s), active streams, positive tags, protected peers, allow-list.
+- Closes at most <strong>20 per cycle</strong> (line 266-267) toward <code>low_watermark</code>.</p>
+<p><strong>AutoConnector</strong> (<code>libp2p/network/auto_connector.py</code>) is the <em>low-water side</em> (this is the braidpool-fork-style AutoConnect behavior):
+- Periodically computes <code>target = midpoint(low, high)</code> (line 299-302 — <strong>500</strong> here).
+- If <code>conns + in_flight &lt; target</code>, takes all non-connected peers from the peerstore that have at least one "direct" (routable, non-relay, transport-supported) address (<code>_get_candidate_peers</code>, filter private-only when node is public), shuffles, dials in batches of <strong>16 (normal) or 32 (needed &gt; 32)</strong> with a <code>CapacityLimiter</code>, 50 ms stagger, <code>dial_timeout=10 s</code> per peer.
+- Per-peer exponential cooldown: 5 s → 15 s → 40 s → … capped <strong>300 s</strong> (capped 60 s when critically below <code>min_connections=400</code>).
+- On disconnect: <code>record_disconnect()</code> → peer is <strong>not re-dialable for 60 s</strong> (<code>swarm.py:2989</code>).
+- <code>min_connections</code> (400) is the <em>critical floor</em>: below it the poll interval drops to 10 s (<code>auto_connector.py:185,233-236</code>).</p>
+<p><strong>TagStore</strong> (<code>libp2p/network/tag_store.py</code>): weighted tags, <code>Protect</code>/<code>is_protected</code>, temp entries reaped after grace period (<code>connection_pruner.py:364</code>).</p>
+<p><strong>ConnectionStatsTracker</strong> (<code>py_ipfs_lite/connection_tracker.py</code>): INotifee that records every connect/disconnect, duration, transport, reason hint; powers <code>/debug/connection-stats</code>.</p>
+<p><strong>Keep-alive</strong> (<code>py_ipfs_lite/peer.py:852</code> <code>_keep_alive_loop</code>): every 180 s, pings at most <strong>5</strong> idle peers via <code>PingService</code>, 500 ms apart, <code>Semaphore(20)</code>.</p>
+<p><strong>Watermark ladder (current node):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Value</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>min_connections</code></td>
+<td>400</td>
+<td>critical floor → 10 s poll below it</td>
+</tr>
+<tr>
+<td><code>low_watermark</code></td>
+<td>400</td>
+<td>prune target; disconnect→auto-connect gate</td>
+</tr>
+<tr>
+<td>target (midpoint)</td>
+<td>500</td>
+<td>what the auto-connector actually aims for</td>
+</tr>
+<tr>
+<td><code>high_watermark</code></td>
+<td>600</td>
+<td>prune trigger (batch 20/cycle toward 400)</td>
+</tr>
+<tr>
+<td>rcmgr <code>max_connections</code></td>
+<td>2400 (<code>max(600×4, 800)</code>, peer.py:509)</td>
+<td>hard dial/accept cap</td>
+</tr>
+<tr>
+<td>QUIC idle timeout</td>
+<td>600 s (peer.py:473)</td>
+<td>local close of idle conns</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-what-the-manager-does-not-do">1.2 What the manager does NOT do</h3>
+<ul>
+<li>It does <strong>not</strong> dial above target; it only prunes above high water.</li>
+<li>There is <strong>no age-based eviction</strong> anywhere (no <code>AgeWindow</code> logic).</li>
+<li>It does <strong>not</strong> keep connections alive — keep-alive is a separate 5-peers-per-3-min loop in the app layer.</li>
+</ul>
+<hr />
+<h2 id="2-q2-why-cant-the-node-reach-even-the-low-water-400">2. Q2: Why can't the node reach even the low water (400)?</h2>
+<h3 id="21-live-evidence-taken-1500-utc-55-h-uptime">2.1 Live evidence (taken 15:00 UTC, ~5.5 h uptime)</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Peers in persistent peerstore</td>
+<td><strong>5,408</strong> (4,275 with ≥1 public-IP addr; QUIC/TCP/WS addrs 30k/20k/3.7k)</td>
+</tr>
+<tr>
+<td>Candidates for auto-connect</td>
+<td>~4,000+ (non-connected public peers)</td>
+</tr>
+<tr>
+<td>Connect events since boot</td>
+<td><strong>105,946</strong></td>
+</tr>
+<tr>
+<td>Disconnect events since boot</td>
+<td><strong>105,580</strong></td>
+</tr>
+<tr>
+<td>Current active</td>
+<td><strong>376</strong> (outbound-dominant; inbound ~15–20%)</td>
+</tr>
+<tr>
+<td>Avg connection lifespan</td>
+<td><strong>50.0 s</strong></td>
+</tr>
+<tr>
+<td>Live age breakdown (376)</td>
+<td><code>&lt;2m: 171 · 2–5m: 14 · 5–10m: 16 · 10–30m: 26 · &gt;30m: 8</code></td>
+</tr>
+<tr>
+<td>Disconnect lifespan (last 500)</td>
+<td><code>&lt;5s: 2 · 5–35s: 435 · 35s–2m: 41 · 2–5m: 8 · 5–10m: 6 · 10–30m: 6 · &gt;30m: 1</code></td>
+</tr>
+<tr>
+<td>Disconnect reasons (last 500)</td>
+<td><code>remote_closed_or_idle: 493 · idle_timeout: 7</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>The node is not failing to connect — it connects 105,946 times and loses 105,580 of them.</strong> Churn, not dial failure, is the ceiling.</p>
+<h3 id="22-the-churn-math">2.2 The churn math</h3>
+<p>Sustained connection count is an equilibrium:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>dN/dt = connect_rate − N / avg_lifespan
+</span></code></pre></div>
+<ul>
+<li>To <em>hold</em> 400 connections with lifespan ~50 s you need a sustained connect rate of <strong>8/s</strong> — <strong>1.9–6.4 s average dial completion</strong> (QUIC handshake + Noise + multistream ≈ 1–3 s in the best case).</li>
+<li>Actual connect rate: 105,946 / ≈19,800 s ≈ <strong>5.3/s</strong> — below the 8/s needed → equilibrium settles at <strong>N ≈ 5.3 × 50 ≈ 265…376 observed</strong>.</li>
+<li>The auto-connector can <em>replenish</em> at most <strong>32 dials per 10 s cycle ≈ 3.2/s</strong> <code>auto_connector.py:357-359</code> — a hard replenishment ceiling below the death rate at 4-500.</li>
+</ul>
+<h3 id="23-root-causes-in-order-of-impact">2.3 Root causes (in order of impact)</h3>
+<p><strong>A. No transport-level keepalive → connections die of idle.</strong>
+Verified: the QUIC transport (<code>libp2p/transport/quic/</code>) has <strong>zero keepalive</strong> — <code>aioquic</code> exposes only <code>idle_timeout</code> (default 600 s), no PING-frame timer; the config fields <code>stream_keep_alive*</code> (<code>quic/config.py:178-181</code>) are <strong>never consumed</strong>. The comment in <code>peer.py:888</code> ("Transport-level keep-alives (QUIC PING frames, Yamux PING frames) maintain underlying connections") describes a mechanism that <strong>does not exist</strong>. Every connection that is not actively used idles out; the remote closes it (kubo/enodal nodes trim idle conns) or our 600 s QUIC idle timer eventually fires. The 5–35 s DHT-hop bucket (435/500) is exactly this: connect → serve 1–2 DHT queries → idle → dead.</p>
+<p><strong>B. The app keepalive starves: only 5 peers per 3 minutes.</strong>
+<code>peer.py:889-892</code>: <code>peers_to_ping = [...][:5]</code> once per 180 s sweep. With ~376 connections that's <strong>1.6 % coverage per sweep</strong> — a connection receives a heartbeat at most once every ~3.7 h. It cannot keep 400 connections alive.</p>
+<p><strong>C. One-shot connections are never reused.</strong>
+Connections are opened, serve 1–2 DHT queries (<code>streams_served: 1-2</code>, <code>protocols: []</code> from tracker records), then nothing ever opens a stream over them again. Nothing keeps the working set warm except brief query bursts.</p>
+<p><strong>D. Disconnect → 60 s re-dial backoff.</strong>
+<code>swarm.py:2989</code> <code>record_disconnect()</code> blocks re-dialing the peer just lost for 60 s; at a death rate of 5.3/s that's ~300 peers in backoff — constantly shrinking the dialable pool between cycles, on top of per-peer failure cooldowns (up to 300 s).</p>
+<p><strong>E. (Not the cause — ruled out) the pruner.</strong>
+<code>ConnectionPruner</code> only fires above high water (600); the node sits at ~350–380, so <strong>it never trims</strong> (<code>connection_pruner.py:239</code>). There is also no age-based ("30 min") eviction anywhere in the code. <code>IPFS_LITE_CONN_MGR_INBOUND_SLOTS=350</code> is set in the container env but <strong>never read by any code</strong>.</p>
+<hr />
+<h2 id="3-q3-why-are-connections-older-than-30-min-nearly-zero">3. Q3: Why are connections older than 30 min nearly zero?</h2>
+<p>Same retention story, from the tracker:</p>
+<ul>
+<li><strong>Live:</strong> only <strong>8 of 376</strong> connections are older than 30 min (<code>over_30m (long-lived stable): 8</code>); 171 are under 2 minutes.</li>
+<li><strong>History:</strong> only <strong>1 of the last 500 disconnections</strong> survived past 30 min (<code>over_30m (stable peers): 1</code>); 435 survived under 35 s.</li>
+<li>The node does <strong>not</strong> prune them (<code>pruner never fires at 376 &lt; 600</code>), and there is <strong>no 30-min age eviction</strong> in py-libp2p (nor in modern go-libp2p's connmgr — its <code>AgeWindow</code> feature was removed upstream).</li>
+</ul>
+<p>The mechanism is: a connection is only as old as its last activity. 99 % of connections perform one DHT hop and go idle; the remote then closes them (10–60 s) or the 600 s QUIC idle timer eventually does. The handful that survive (8/376) are the working set that keeps receiving traffic — DHT/bitswap reuse, inbound streams, or the occasional keepalive ping.</p>
+<hr />
+<h2 id="4-py-libp2p-connmgr-vs-go-libp2p-connmgr-complete-comparison">4. py-libp2p connmgr vs go-libp2p connmgr — complete comparison</h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>go-libp2p <code>connmgr.go</code></th>
+<th>py-libp2p (current)</th>
+<th>Gap?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Watermarks (low/high)</td>
+<td><code>lowWater</code>/<code>highWater</code> (kubo: 300/600 or 400/600)</td>
+<td>400/600 via env (defaults 50/100)</td>
+<td>parity</td>
+</tr>
+<tr>
+<td>Prune trigger</td>
+<td>background <code>trim()</code> every <code>CheckInterval</code> (30–120 s)</td>
+<td>on every <code>add_conn()</code> only</td>
+<td>py prunes on-every-connect; go on-timer — py ok since connect is the only growth path, but inbound floods also trigger py prunes (go's does not)</td>
+</tr>
+<tr>
+<td>Prune batch / convergence</td>
+<td>trims all the way to <code>lowWater</code> each cycle</td>
+<td><strong>capped at 20 per cycle</strong> (<code>connection_pruner.py:266-267</code>)</td>
+<td>gap — slow convergence back to 400 if flooded to 600+</td>
+</tr>
+<tr>
+<td>Grace period</td>
+<td>10 s (30 s newer versions)</td>
+<td>20 s (<code>GRACE_PERIOD</code>, config.py:29)</td>
+<td>parity</td>
+</tr>
+<tr>
+<td>Age-based eviction (<code>AgeWindow</code>)</td>
+<td>removed upstream (braidpool fork kept it)</td>
+<td>none</td>
+<td>parity (modern go)</td>
+</tr>
+<tr>
+<td>Connection age source</td>
+<td><code>established</code> timestamp from notifee <code>Connected</code></td>
+<td><code>_created_at</code> set at SwarmConn construction</td>
+<td>minor — counts handshake time as age</td>
+</tr>
+<tr>
+<td>Sort key</td>
+<td>tag score (lowest first), then connection age</td>
+<td>temp → tag score → streams → direction → age</td>
+<td>near-parity; py additionally protects in-use connections (go relies on tags)</td>
+</tr>
+<tr>
+<td><code>Protect</code>/<code>Unprotect</code></td>
+<td>yes (<code>ProtectWithTag</code>)</td>
+<td>yes (<code>tag_store.is_protected</code> + pruner skip)</td>
+<td>parity</td>
+</tr>
+<tr>
+<td>Weighted tags w/ expiry</td>
+<td><code>upsertTag</code> (weight, expiry)</td>
+<td>tags + temp entries; no expiry</td>
+<td>minor gap — no tag expiry</td>
+</tr>
+<tr>
+<td>Selective trimming by tags (<code>SelectPeers</code>)</td>
+<td>yes (scan for tag values)</td>
+<td>metric collection for scoring; explicit protect</td>
+<td>parity (py uses score order)</td>
+</tr>
+<tr>
+<td>AutoConnect (dialing when below low-water)</td>
+<td><strong>not in upstream go connmgr</strong> — only in the braidpool fork (background task, dials via peerstore/DHT)</td>
+<td>full AutoConnector w/ candidate filtering, cooldowns, batches</td>
+<td>py has more machinery than upstream go; mirrors braidpool fork</td>
+</tr>
+<tr>
+<td>Dial concurrency</td>
+<td>braidpool fork: dial limiter (~10)</td>
+<td><code>CapacityLimiter(16/32)</code> + 50 ms stagger</td>
+<td>parity-class; py bigger batches</td>
+</tr>
+<tr>
+<td>Keepalive duty</td>
+<td><strong>none in go</strong> — but go connections survive because go-swarm never idle-closes, muxers keep streams, and kubo traffic reuses them</td>
+<td><strong>absent too</strong>, and py connections idle-close fast (no reuse, no pings)</td>
+<td><strong>the real gap is here, at the host/swarm level, not the connmgr</strong></td>
+</tr>
+<tr>
+<td>Per-peer connection limit</td>
+<td>1 by default (swarm dedup)</td>
+<td><code>max_connections_per_peer=3</code> + dedup of duplicate muxed conns (<code>_shared_muxed_conn</code>)</td>
+<td>py allows up to 3, then dedups</td>
+</tr>
+<tr>
+<td>Idle-close of connections</td>
+<td>go-swarm doesn't close idle conns (only transport errors / explicit close)</td>
+<td>QUIC 600 s idle timeout + remote closes; app keepalive only 5 peers/3 min</td>
+<td><strong>primary divergence</strong></td>
+</tr>
+<tr>
+<td>Reconnection on death</td>
+<td>none (go doesn't re-dial dropped conns; relies on ambient dials)</td>
+<td>record_disconnect 60 s backoff + periodic redial (max 32/cycle)</td>
+<td>parity of <em>absence</em>, but py pays a 60 s penalty that delays recovery</td>
+</tr>
+<tr>
+<td>Statistics/telemetry</td>
+<td>bare (GetInfo/Dump)</td>
+<td>rich: <code>/debug/connection-stats</code>, metrics, reasons</td>
+<td>py exceeds go</td>
+</tr>
+</tbody>
+</table>
+<h3 id="41-what-is-genuinely-missing-in-py-libp2ps-connmgr-vs-go-libp2p">4.1 What is genuinely missing in py-libp2p's connmgr vs go-libp2p</h3>
+<ol>
+<li><strong>No convergent trimming under inbound floods</strong> — 20/cycle cap means sustained &gt;600 connections if inbound ever floods (go trims to low water in one pass).</li>
+<li><strong>No tag expiry</strong> (<code>upsertTag</code> weight lifetime) — tags accumulate until the temp reaper clears them.</li>
+<li><strong>No <code>CMInfo</code>-style exposure of <code>last_trim</code>/trim history</strong> — <code>swarm.get_conn_mgr_info()</code> exists but <code>/debug/connmgr</code> returns 404 (not wired into the API).</li>
+<li><strong>Keepalive is not owned by the connmgr at all</strong> — go-libp2p doesn't need it (connections don't idle-close); py-libp2p does but the 5-per-3-min app loop is far too weak.</li>
+</ol>
+<hr />
+<h2 id="5-recommended-fixes-prioritized">5. Recommended fixes (prioritized)</h2>
+<ol>
+<li><strong>Real keepalive (highest leverage).</strong> Rotate pings over <em>all</em> idle connections, not 5 per 3 min: e.g. sweep every 60 s, ping up to 100 idle conns with <code>Semaphore(25)</code>, 100 ms spacing — full coverage of ~400 conns in ≈4 cycles. Alternatively implement a transport-level timer (aioquic has no PING API; opening a lightweight stream ~30 s before the remote's expected idle close is the pragmatic route). Target: lifespan 50 s → 5+ min.</li>
+<li><strong>Remove/relax the 60 s disconnect backoff</strong> for peers we only just successfully dialed — reuse the existing success-clears-cooldown logic: on disconnect of a peer dialed &lt; 5 min ago, allow immediate re-dial (or backoff 10 s). This alone lifts replenishment toward the death rate.</li>
+<li><strong>Scale dial batch with need:</strong> <code>batch = min(needed, 64)</code> + keep 50 ms stagger — pushes replenishment ceiling from 3.2/s to ~6/s when critically low.</li>
+<li><strong>Trim convergence:</strong> raise the pruner cap from 20 to a floor-of-<code>(conns − low_water)/4</code> so floods above 600 converge in 4 cycles.</li>
+<li><strong>Wire <code>/debug/connmgr</code></strong> to <code>CMInfo</code> (low/high/connected/grace/last_trim) for operational verification of pruning activity.</li>
+<li><strong>Reuse the working set:</strong> tag peers used within the last ~10 min (<code>DHT</code>-warm tag) so the pruner never kills them and the keepalive prioritizes them first.</li>
+</ol>
+<p><strong>Bottom line:</strong> the connection manager logic is sound and matches go-libp2p; the node's failure to stay above 400 is a <strong>retention</strong> problem (idle-death without keepalive + replenishment ceiling vs. 5.3/s churn), not a pruning problem — and there is no 30-min pruning cliff; connections simply never survive that long because they are abandoned after one DHT hop.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
