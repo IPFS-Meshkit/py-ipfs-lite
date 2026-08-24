@@ -514,6 +514,42 @@ class ContentMixin:
         """
         return PeerSession(self._exchange)
 
+    async def fetch_block(
+        self, cid: Any, timeout: float | None = None, cache: bool = True
+    ) -> bytes:
+        """
+        Fetch raw block bytes for *cid*: local blockstore first, then Bitswap.
+
+        Unlike :meth:`get_node` this returns the undecoded block and works
+        for any codec.  When ``cache`` is true a network-fetched block is
+        written back into the local blockstore.
+        """
+        self._ensure_started()
+        t_val = timeout if timeout is not None else self.config.default_timeout
+
+        cid_bytes = (
+            cid_to_bytes(parse_cid(cid)) if isinstance(cid, str) else cid_to_bytes(cid)
+        )
+
+        data = await self.blockstore.get(cid_bytes)  # type: ignore[union-attr]
+        if data is not None:
+            return data
+
+        with trio.fail_after(t_val):
+            data = await self._exchange.get_block(  # type: ignore[union-attr]
+                parse_cid(cid) if isinstance(cid, str) else cid,
+                timeout=t_val,
+            )
+        if data is None:
+            raise BlockNotFoundError(f"Block not found for CID: {cid}")
+
+        if cache:
+            try:
+                await self.blockstore.put(cid_bytes, data)  # type: ignore[union-attr]
+            except Exception as e:  # pragma: no cover - cache best-effort
+                logger.debug("Failed caching fetched block %s: %s", cid, e)
+        return data
+
     async def has_block(self, cid: Any) -> bool:
         """
         Check whether a block is available locally.

@@ -98,8 +98,12 @@ class NamingMixin:
             except Exception:
                 pass
 
+        # Publishing walks the DHT (k-closest lookup + signed-record STORE
+        # RPCs) which reliably takes longer than the 30 s default budget on
+        # loaded networks — mirror the dht/provide endpoint's 90 s allowance.
+        publish_timeout = max(t_val, 90.0)
         try:
-            with trio.fail_after(t_val):
+            with trio.fail_after(publish_timeout):
                 await ipns_publish(
                     self.routing,
                     self._host_key.private_key,
@@ -108,6 +112,17 @@ class NamingMixin:
                     sequence,
                     lifetime_hours,
                 )
+        except trio.TooSlowError:
+            logger.warning(
+                "IPNS publish timed out after %.0fs — local record is stored "
+                "but may not have propagated to remote peers",
+                publish_timeout,
+            )
+            raise RoutingError(
+                f"Failed to publish IPNS record: timed out after "
+                f"{publish_timeout:.0f}s (local record is stored; retry or "
+                f"use a longer timeout)"
+            ) from None
         except Exception as e:
             logger.warning(f"Failed to publish IPNS record to DHT: {e}")
             raise RoutingError(f"Failed to publish IPNS record: {e}") from e

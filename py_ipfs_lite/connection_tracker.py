@@ -794,9 +794,9 @@ class ConnectionStatsTracker(INotifee):
             record.protocol = _stream_protocol(record.stream_ref)
         if record.direction == "unknown":
             record.direction = _stream_direction(record.stream_ref)
-            if (
-                old_direction != record.direction
-                and record.direction in ("outbound", "inbound")
+            if old_direction != record.direction and record.direction in (
+                "outbound",
+                "inbound",
             ):
                 peer_stats = self.peer_stream_stats.get(record.peer_id)
                 if peer_stats is not None:

@@ -361,7 +361,9 @@ def update_live_metrics(peer: Any) -> None:
                 act_in = stream_snap.get("ActiveInboundStreams", 0)
                 IPFS_STREAMS_OUTBOUND_ACTIVE.set(act_out)
                 IPFS_STREAMS_INBOUND_ACTIVE.set(act_in)
-                IPFS_STREAMS_ACTIVE_BY_DIRECTION.labels(direction="outbound").set(act_out)
+                IPFS_STREAMS_ACTIVE_BY_DIRECTION.labels(direction="outbound").set(
+                    act_out
+                )
                 IPFS_STREAMS_ACTIVE_BY_DIRECTION.labels(direction="inbound").set(act_in)
         except Exception:
             pass
