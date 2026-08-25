@@ -96,17 +96,6 @@ async def create_and_start_peer(
 
 async def run_daemon(port: int, seed: str | None, config: Config) -> None:
     """Run the IPFS Lite daemon (provider mode)."""
-    # Set M_MMAP_THRESHOLD_ to 8KB so allocations >=8KB use mmap (which
-    # can be returned to OS via munmap). Smaller allocations stay on heap
-    # to avoid 4KB-per-allocation waste from mmap's minimum page size.
-    # This reduces RSS growth from OpenSSL/aioquic C-level fragmentation.
-    try:
-        import ctypes
-        libc = ctypes.CDLL("libc.so.6")
-        libc.mallopt(-3, 8192)  # M_MMAP_THRESHOLD_ = 8192
-    except Exception:
-        pass
-
     logger.info("Starting py-ipfs-lite daemon...")
     try:
         async with create_and_start_peer(port, seed, config, bootstrap=True) as peer:
