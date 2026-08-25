@@ -96,6 +96,17 @@ async def create_and_start_peer(
 
 async def run_daemon(port: int, seed: str | None, config: Config) -> None:
     """Run the IPFS Lite daemon (provider mode)."""
+    # Force glibc to use mmap for ALL allocations so freed memory is
+    # returned to the OS immediately via munmap rather than being held
+    # in malloc arenas. This prevents RSS growth from OpenSSL and
+    # aioquic C-level allocation fragmentation.
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6")
+        libc.mallopt(-3, 0)  # M_MMAP_THRESHOLD_ = 0 → always mmap
+    except Exception:
+        pass
+
     logger.info("Starting py-ipfs-lite daemon...")
     try:
         async with create_and_start_peer(port, seed, config, bootstrap=True) as peer:
