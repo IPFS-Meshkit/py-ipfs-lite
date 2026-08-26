@@ -252,6 +252,9 @@ def main() -> None:
     logging.getLogger("libp2p").setLevel(logging.INFO)
     logging.getLogger("libp2p.network.auto_connector").setLevel(logging.INFO)
 
+    # Enable INFO logging for py_ipfs_lite diagnostics
+    logging.getLogger("py_ipfs_lite").setLevel(logging.INFO)
+
     # Silence high-volume QUIC INFO messages (Duplicate CRYPTO, version negotiation,
     # security verification). These fire 45+ times/second at steady state and each
     # burns CPU via Python string formatting + file I/O. Keep WARNING+ for real errors.
