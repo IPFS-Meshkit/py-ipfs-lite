@@ -253,7 +253,16 @@ def main() -> None:
     logging.getLogger("libp2p.network.auto_connector").setLevel(logging.INFO)
 
     # Enable INFO logging for py_ipfs_lite diagnostics
-    logging.getLogger("py_ipfs_lite").setLevel(logging.INFO)
+    pyfslogger = logging.getLogger("py_ipfs_lite")
+    pyfslogger.setLevel(logging.INFO)
+    if not pyfslogger.handlers and not any(
+        isinstance(h, logging.StreamHandler) for h in logging.getLogger().handlers
+    ):
+        _diag_handler = logging.StreamHandler()
+        _diag_handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
+        )
+        pyfslogger.addHandler(_diag_handler)
 
     # Silence high-volume QUIC INFO messages (Duplicate CRYPTO, version negotiation,
     # security verification). These fire 45+ times/second at steady state and each
