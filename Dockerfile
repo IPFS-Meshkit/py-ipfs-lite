@@ -24,7 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Use jemalloc as the memory allocator to prevent RSS growth from
 # C-level allocation fragmentation (OpenSSL encrypt/decrypt cycles,
 # aioquic packet buffers, etc.)
-ENV LD_PRELOAD=libjemalloc.so.2
+# - background_thread:true: use background threads for arena decay
+# - decay_time:1: decay unused pages within 1 second (default is 10s)
+# - narenas:4: limit arenas to reduce idle memory overhead
+ENV LD_PRELOAD=libjemalloc.so.2 \
+    JEMALLOC_CONF=background_thread:true,decay_time:1,narenas:4
 
 # Set working directory
 WORKDIR /app
