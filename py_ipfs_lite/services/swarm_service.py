@@ -61,25 +61,18 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
 
         meta = conn_meta_map.get(pid_str)
         if meta is None:
-            # Check if we have any meta for this peer at all
-            tracker = getattr(peer, "connection_tracker", None)
-            all_meta = getattr(tracker, "_conn_meta", {}) if tracker else {}
-            all_peer_ids = set()
-            for m in all_meta.values():
-                if m.get("peer_id"):
-                    all_peer_ids.add(m["peer_id"])
-            logger.warning(
-                "DIAG-ZOMBIE: peer=%s conns_in_swarm=%d conn_meta_count=%d all_peer_ids_match=%s",
-                pid_str,
-                len(conns),
-                len(conn_meta_map),
-                pid_str in all_peer_ids,
+            import sys
+            print(
+                f"DIAG-ZOMBIE-PRINT: peer={pid_str} conns_in_swarm={len(conns)} conn_meta_count={len(conn_meta_map)}",
+                file=sys.stderr,
+                flush=True,
             )
         elif meta.get("connected_at") is None:
-            logger.warning(
-                "DIAG-ZOMBIE2: peer=%s meta_keys=%s",
-                pid_str,
-                list(meta.keys()),
+            import sys
+            print(
+                f"DIAG-ZOMBIE2-PRINT: peer={pid_str} meta_keys={list(meta.keys())}",
+                file=sys.stderr,
+                flush=True,
             )
         duration_secs = (
             round(now_mono - meta["start_mono"], 1)
