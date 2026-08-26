@@ -296,3 +296,92 @@ class MaintenanceMixin:
                     pass
             except Exception as e:
                 logger.debug(f"Stream leak monitor error: {e}")
+
+    async def _zombie_connection_cleanup_loop(self) -> None:
+        """Detect and close zombie connections that have no tracker metadata.
+
+        A zombie connection sits in ``network.connections`` but was never
+        properly registered with the connection tracker (``_conn_meta`` has
+        no entry for it).  This happens when:
+        1. The ``connected()`` notifee was never called (connection failed
+           partway through setup).
+        2. The ``disconnected()`` notifee already removed the metadata but
+           the connection object still lingers in the swarm dict.
+
+        These zombies show up in the API as ``duration_seconds: 0`` with
+        ``connected_at: null``.  They waste memory and confuse the
+        auto-connector (it sees them as "connected" and skips re-dialing
+        the peer).
+        """
+        raw_host = getattr(self.host, "_host", self.host)
+        if raw_host is None:
+            return
+
+        ZOMBIE_THRESHOLD = 120.0  # seconds without metadata before closing
+
+        while True:
+            await trio.sleep(30.0)  # sweep every 30 seconds
+            try:
+                network = raw_host.get_network()
+                if not hasattr(network, "connections"):
+                    continue
+
+                tracker = self.connection_tracker
+                if tracker is None:
+                    continue
+
+                # Build a set of peer_ids that have tracker metadata
+                tracked_peer_ids: set[str] = set()
+                for meta in tracker._conn_meta.values():
+                    p_id = meta.get("peer_id")
+                    if p_id and p_id != "unknown":
+                        tracked_peer_ids.add(p_id)
+
+                now = time.monotonic()
+                zombies_closed = 0
+
+                for peer_id_obj, conns in list(network.connections.items()):
+                    try:
+                        pid_str = peer_id_obj.to_base58()
+                    except Exception:
+                        pid_str = str(peer_id_obj)
+
+                    # Skip if this peer has tracker metadata
+                    if pid_str in tracked_peer_ids:
+                        continue
+
+                    conns_list = conns if isinstance(conns, list) else [conns]
+                    for conn in conns_list:
+                        # Check connection age — only close if it's been
+                        # alive long enough to be considered a zombie
+                        created_at = getattr(conn, "_created_at", None)
+                        if created_at is not None:
+                            age = now - created_at
+                            if age < ZOMBIE_THRESHOLD:
+                                continue  # Too fresh, give it time
+
+                        # This connection has no tracker metadata and is
+                        # old enough to be a zombie — close it
+                        logger.warning(
+                            "Closing zombie connection to %s "
+                            "(no tracker metadata, age=%.0fs)",
+                            pid_str,
+                            age if created_at is not None else -1,
+                        )
+                        try:
+                            await raw_host.disconnect(peer_id_obj)
+                            zombies_closed += 1
+                        except Exception as e:
+                            logger.debug(
+                                "Error closing zombie connection to %s: %s",
+                                pid_str,
+                                e,
+                            )
+
+                if zombies_closed > 0:
+                    logger.info(
+                        "Zombie connection cleanup: closed %d zombie connections",
+                        zombies_closed,
+                    )
+            except Exception as e:
+                logger.debug(f"Zombie connection cleanup error: {e}")
