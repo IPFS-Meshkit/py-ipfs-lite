@@ -438,11 +438,44 @@ class ConnectionStatsTracker(INotifee):
         muxed_conn = getattr(conn, "muxed_conn", None)
         muxed_id = id(muxed_conn) if muxed_conn is not None else None
 
-        conn_meta = self._conn_meta.pop(conn_id, None)
+        # Guard against Python id() recycling: if the stored meta belongs to
+        # a DIFFERENT peer than the one disconnecting, the id() was reused by
+        # a new connection object that was allocated at the same address after
+        # the previous connection was GC'd.  Popping it would incorrectly
+        # delete the live connection's metadata (creating a zombie).
+        # Only pop if the stored peer_id matches the disconnecting connection.
+        existing_meta = self._conn_meta.get(conn_id)
+        if existing_meta is not None and existing_meta.get("peer_id") != peer_id:
+            logger.warning(
+                "DIAG-disconnected: id() recycling detected! "
+                "conn_id=%d has stored peer=%s but disconnecting peer=%s — "
+                "NOT popping to avoid corrupting live connection metadata",
+                conn_id,
+                existing_meta.get("peer_id"),
+                peer_id,
+            )
+            conn_meta = None  # pretend it was never there
+        else:
+            conn_meta = self._conn_meta.pop(conn_id, None)
+
         popped_muxed = False
         if muxed_conn is not None:
-            muxed_meta = self._conn_meta.pop(muxed_id, None)
-            popped_muxed = muxed_meta is not None
+            existing_muxed_meta = self._conn_meta.get(muxed_id)
+            if (
+                existing_muxed_meta is not None
+                and existing_muxed_meta.get("peer_id") != peer_id
+            ):
+                logger.warning(
+                    "DIAG-disconnected: muxed id() recycling detected! "
+                    "muxed_id=%d stored peer=%s but disconnecting peer=%s — "
+                    "NOT popping",
+                    muxed_id,
+                    existing_muxed_meta.get("peer_id"),
+                    peer_id,
+                )
+            else:
+                muxed_meta = self._conn_meta.pop(muxed_id, None)
+                popped_muxed = muxed_meta is not None
 
         start_mono = conn_meta.get("start_mono") if conn_meta else None
         duration = (now_mono - start_mono) if start_mono is not None else None
