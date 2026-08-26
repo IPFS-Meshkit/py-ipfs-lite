@@ -11,12 +11,20 @@ ENV MALLOC_ARENA_MAX=2 \
 ENV TZ=Asia/Kolkata
 
 # Install system dependencies required for cryptography (e.g. fastecdsa used by libp2p)
+# Also install jemalloc to replace glibc malloc — jemalloc has much better
+# fragmentation handling and actively returns memory to the OS.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
     libgmp-dev \
     tzdata \
+    libjemalloc2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Use jemalloc as the memory allocator to prevent RSS growth from
+# C-level allocation fragmentation (OpenSSL encrypt/decrypt cycles,
+# aioquic packet buffers, etc.)
+ENV LD_PRELOAD=libjemalloc.so.2
 
 # Set working directory
 WORKDIR /app
