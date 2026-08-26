@@ -61,19 +61,14 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
 
         meta = conn_meta_map.get(pid_str)
         if meta is None:
-            import sys
-            print(
-                f"DIAG-ZOMBIE-PRINT: peer={pid_str} conns_in_swarm={len(conns)} conn_meta_count={len(conn_meta_map)}",
-                file=sys.stderr,
-                flush=True,
-            )
+            with open("/tmp/zombie_diag.log", "a") as f:
+                f.write(f"ZOMBIE: peer={pid_str} conns={len(conns)} meta_count={len(conn_meta_map)}\n")
         elif meta.get("connected_at") is None:
-            import sys
-            print(
-                f"DIAG-ZOMBIE2-PRINT: peer={pid_str} meta_keys={list(meta.keys())}",
-                file=sys.stderr,
-                flush=True,
-            )
+            with open("/tmp/zombie_diag.log", "a") as f:
+                f.write(f"ZOMBIE2: peer={pid_str} meta_keys={list(meta.keys())}\n")
+        elif meta.get("transport", "unknown") == "unknown":
+            with open("/tmp/zombie_diag.log", "a") as f:
+                f.write(f"ZOMBIE3: peer={pid_str} meta_transport={meta.get('transport')} connected_at={meta.get('connected_at')} start_mono={meta.get('start_mono')}\n")
         duration_secs = (
             round(now_mono - meta["start_mono"], 1)
             if meta and "start_mono" in meta

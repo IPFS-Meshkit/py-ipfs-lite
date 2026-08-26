@@ -69,6 +69,9 @@ class Config:
     pubsub_leave_misses: int = 4
     # Persist auto-joined topics to disk and rejoin them instantly on boot.
     pubsub_persist_topics: bool = True
+    # Comma-separated list of transports to enable (e.g. "tcp", "tcp,quic", "tcp,ws,quic").
+    # Set via IPFS_LITE_TRANSPORTS env var.
+    transports: str = "tcp,ws,quic"
 
     def __post_init__(self) -> None:
         if self.reprovide_interval_seconds == 0:
@@ -154,6 +157,10 @@ class Config:
                 self.announce_addrs = tuple(
                     a.strip() for a in env_announce.split(",") if a.strip()
                 )
+
+        env_transports = os.getenv("IPFS_LITE_TRANSPORTS")
+        if env_transports is not None:
+            self.transports = env_transports.strip().lower()
 
         try:
             self.blockstore_type = BlockStoreType(self.blockstore_type)

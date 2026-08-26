@@ -302,12 +302,20 @@ def main() -> None:
                 port = parsed_args.port
                 if port <= 0:
                     port = find_free_port()
-                # Build listen addresses for all three transports on the SAME port
-                listen_addrs = [
-                    Multiaddr(f"/ip4/0.0.0.0/tcp/{port}"),  # plain TCP
-                    Multiaddr(f"/ip4/0.0.0.0/tcp/{port}/ws"),  # WebSocket over TCP
-                    Multiaddr(f"/ip4/0.0.0.0/udp/{port}/quic-v1"),  # QUIC-v1
-                ]
+                # Build listen addresses based on configured transports
+                enabled = set(t.strip() for t in config.transports.split(","))
+                listen_addrs = []
+                if "tcp" in enabled:
+                    listen_addrs.append(Multiaddr(f"/ip4/0.0.0.0/tcp/{port}"))
+                if "ws" in enabled:
+                    listen_addrs.append(Multiaddr(f"/ip4/0.0.0.0/tcp/{port}/ws"))
+                if "quic" in enabled:
+                    listen_addrs.append(Multiaddr(f"/ip4/0.0.0.0/udp/{port}/quic-v1"))
+                if not listen_addrs:
+                    raise ValueError(
+                        f"No valid transports in IPFS_LITE_TRANSPORTS='{config.transports}'. "
+                        "Expected comma-separated list of: tcp, ws, quic"
+                    )
                 key_pair = _get_key_pair(parsed_args.seed, config)
 
                 peer = Peer(config, host_key=key_pair, listen_addrs=listen_addrs)
