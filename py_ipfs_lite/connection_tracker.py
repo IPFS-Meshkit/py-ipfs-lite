@@ -388,6 +388,13 @@ class ConnectionStatsTracker(INotifee):
 
         self.total_connected_events += 1
 
+        logger.info(
+            "connected() notifee: peer=%s id(conn)=%d meta_count=%d",
+            peer_id,
+            id(conn),
+            len(self._conn_meta),
+        )
+
         stats = self.stats.setdefault(peer_id, PeerConnectionStats(peer_id=peer_id))
         stats.total_connections += 1
         stats.current_connections += 1
@@ -427,15 +434,29 @@ class ConnectionStatsTracker(INotifee):
         now_mono = time.monotonic()
         now_ts = self._now()
 
-        conn_meta = self._conn_meta.pop(id(conn), None)
+        conn_id = id(conn)
         muxed_conn = getattr(conn, "muxed_conn", None)
+        muxed_id = id(muxed_conn) if muxed_conn is not None else None
+
+        conn_meta = self._conn_meta.pop(conn_id, None)
+        popped_muxed = False
         if muxed_conn is not None:
-            self._conn_meta.pop(id(muxed_conn), None)
+            muxed_meta = self._conn_meta.pop(muxed_id, None)
+            popped_muxed = muxed_meta is not None
 
         start_mono = conn_meta.get("start_mono") if conn_meta else None
         duration = (now_mono - start_mono) if start_mono is not None else None
 
         self.total_disconnected_events += 1
+
+        logger.info(
+            "disconnected() notifee: peer=%s id(conn)=%d had_meta=%s popped_muxed=%s meta_count=%d",
+            peer_id,
+            conn_id,
+            conn_meta is not None,
+            popped_muxed,
+            len(self._conn_meta),
+        )
 
         stats = self.stats.get(peer_id)
         if stats:

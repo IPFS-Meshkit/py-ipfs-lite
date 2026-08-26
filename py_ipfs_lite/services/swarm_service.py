@@ -57,6 +57,13 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
             addrs = []
 
         meta = conn_meta_map.get(pid_str)
+        if meta is None:
+            logger.info(
+                "list_connected_peers: ZOMBIE peer=%s conns_in_swarm=%d conn_meta_count=%d",
+                pid_str,
+                len(conns),
+                len(conn_meta_map),
+            )
         duration_secs = (
             round(now_mono - meta["start_mono"], 1)
             if meta and "start_mono" in meta
