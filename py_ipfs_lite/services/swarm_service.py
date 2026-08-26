@@ -3,10 +3,13 @@ The only module allowed to reach into peer.host._host / peer.routing._routing.
 When those internals shift (as they have before), this is the one place to fix.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import HTTPException
+
+logger = logging.getLogger("py_ipfs_lite.swarm_service")
 
 from py_ipfs_lite.peer import Peer
 
@@ -58,8 +61,8 @@ async def list_connected_peers(peer: Peer) -> SwarmPeers:
 
         meta = conn_meta_map.get(pid_str)
         if meta is None:
-            logger.info(
-                "list_connected_peers: ZOMBIE peer=%s conns_in_swarm=%d conn_meta_count=%d",
+            logger.warning(
+                "DIAG-ZOMBIE: peer=%s conns_in_swarm=%d conn_meta_count=%d",
                 pid_str,
                 len(conns),
                 len(conn_meta_map),

@@ -388,8 +388,8 @@ class ConnectionStatsTracker(INotifee):
 
         self.total_connected_events += 1
 
-        logger.info(
-            "connected() notifee: peer=%s id(conn)=%d meta_count=%d",
+        logger.warning(
+            "DIAG-connected: peer=%s id(conn)=%d meta_count=%d",
             peer_id,
             id(conn),
             len(self._conn_meta),
@@ -449,8 +449,8 @@ class ConnectionStatsTracker(INotifee):
 
         self.total_disconnected_events += 1
 
-        logger.info(
-            "disconnected() notifee: peer=%s id(conn)=%d had_meta=%s popped_muxed=%s meta_count=%d",
+        logger.warning(
+            "DIAG-disconnected: peer=%s id(conn)=%d had_meta=%s popped_muxed=%s meta_count=%d",
             peer_id,
             conn_id,
             conn_meta is not None,
