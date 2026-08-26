@@ -171,11 +171,6 @@ class LifecycleMixin:
             if self.config.stream_monitor_enabled:
                 self._nursery.start_soon(self._stream_leak_monitor_loop)
 
-            # Zombie connection cleanup: detect and close connections that
-            # have no tracker metadata (duration=0, connected_at=null) and
-            # have been alive long enough to be considered zombies.
-            self._nursery.start_soon(self._zombie_connection_cleanup_loop)
-
             # Initialize Pubsub/GossipSub if enabled
             if self.config.enable_pubsub:
                 await self._init_pubsub()
