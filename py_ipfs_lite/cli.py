@@ -327,7 +327,26 @@ def main() -> None:
                 logger.info(
                     f"Starting py-ipfs-lite HTTP API daemon at http://{parsed_args.api_host}:{parsed_args.api_port}"
                 )
-                trio.run(hypercorn.trio.serve, app, hyperconfig)
+
+                async def _serve_with_restart() -> None:
+                    while True:
+                        try:
+                            await hypercorn.trio.serve(app, hyperconfig)
+                            break  # clean exit
+                        except Exception as exc:
+                            # trio.BusyResourceError can surface when an HTTP/1.1
+                            # client closes the connection abruptly while hypercorn
+                            # is mid-response (h11 race).  Log and restart instead
+                            # of crashing the entire daemon.
+                            logger.warning(
+                                "hypercorn serve raised %s: %r — restarting API server",
+                                type(exc).__name__,
+                                exc,
+                            )
+                            import trio as _trio
+                            await _trio.sleep(1)
+
+                trio.run(_serve_with_restart)
             else:
                 trio.run(run_daemon, parsed_args.port, parsed_args.seed, config)
 
